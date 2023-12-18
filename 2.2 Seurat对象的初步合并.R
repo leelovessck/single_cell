@@ -7,14 +7,39 @@ getwd()
 if(!require(Seurat))install.packages("Seurat")
 if(!require(multtest))BiocManager::install("multtest")
 if(!require(dplyr))install.packages("dplyr")
-if(!require(harmony))install.packages("harmony")
+if(!require(harmony))devtools::install_github("immunogenomics/harmony")
 }
 
 #创建对象的答疑
 {
 #注1：
 #这里的方法适用于有多个样本时
-#只有1个样本时不需要进行ancher操作
+#只有1个样本时不需要进行合并操作
+  
+#注2：
+#对多个样本的合并有3种不同的方法
+#分别是merge、anchor、harmony
+#其中anchor、harmony可以用来清除批次效应
+
+#注3：
+#harmony速度快、内存少，适用于较大的文件
+#但是安装harmony需要从github上下载
+#使用harmony时
+#先使用merge合并对象，再使用harmony去除批次效应
+
+#注4：
+#当文件特别大时，即使使用harmony，也建议分步处理
+#如下所示
+
+#注5：
+#如果文件比较小，可以使用anchor
+#in[1]:control1 <- NormalizeData(control1, normalization.method = "LogNormalize", scale.factor = 10000)
+#in[2]:control1 <- FindVariableFeatures(control1, selection.method = "vst", nfeatures = 2000)
+#in[3]:control2 <- NormalizeData(control2, normalization.method = "LogNormalize", scale.factor = 10000)
+#in[4]:control2 <- FindVariableFeatures(control2, selection.method = "vst", nfeatures = 2000)
+#in[5]:control <- FindIntegrationAnchors(object.list = list(control1,control2), dims = 1:20)
+#in[6]:control <- IntegrateData(anchorset = control, dims = 1:20)
+#后面就可以按流程进行降维了
 }
 
 #定义一个函数帮助NormalizeData（标准化表达矩阵）与FindVariableFeatures（高变基因计算）
