@@ -10,7 +10,7 @@ if(!require(dplyr))install.packages("dplyr")
 if(!require(harmony))devtools::install_github("immunogenomics/harmony")
 }
 
-#创建对象的答疑
+#对象合并的答疑
 {
 #注1：
 #这里的方法适用于有多个样本时
