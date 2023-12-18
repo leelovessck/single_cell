@@ -9,7 +9,7 @@ if(!require(multtest))BiocManager::install("multtest")
 if(!require(dplyr))install.packages("dplyr")
 }
 
-#创建对象的答疑
+#对象拆分的答疑
 {
 #注1：
 #GSE173193和GSE182381分别使用了两种不同函数
