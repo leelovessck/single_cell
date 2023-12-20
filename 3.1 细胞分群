@@ -1,0 +1,63 @@
+rm(list = ls())
+setwd("D:/2023.10/PE scRNA（多数据库运行）")
+getwd()
+
+#打开必要的package
+{
+if(!require(Seurat))install.packages("Seurat")
+if(!require(clustree))install.packages("clustree")
+}
+
+#载入seurat对象
+object <- readRDS("./Seurat_data（整理）/合并.rds")
+colnames(object@meta.data)
+meta.data <- object@meta.data
+meta.data <- meta.data[,-5]
+object@meta.data <- meta.data
+rm(meta.data)
+  ##精简Seurat对象
+  ##"percent.mt"在完成质量控制后就不需要了
+  ##通过以上步骤把"percent.mt"删除
+
+#设置不同的分辨率，观察分群效果
+{
+#resolution = 0.5
+object_0.5 <- FindClusters(object, resolution = 0.5)
+object_0.5 <- RunUMAP(object_0.5, dims = 1:10)
+DimPlot(object_0.5, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+  ##得到1.resolution = 0.5时的细胞分群图
+
+#resolution = 0.75
+object_0.75 <- FindClusters(object, resolution = 0.75)
+object_0.75 <- RunUMAP(object_0.75, dims = 1:10)
+DimPlot(object_0.75, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+  ##得到2.resolution = 0.75时的细胞分群图
+
+#设置不同的分辨率，查看聚类树
+object_for_clustree <- object
+set.resolutions = seq(0, 1.2, by = 0.1)
+object_for_clustree <- FindClusters(object = object_for_clustree ,
+                                     resolution = set.resolutions,
+                                     verbose = TRUE) 
+clustree(object_for_clustree)
+  ##得到3.细胞分群的聚类树
+}
+  ##根据以上结果，确定resolutions = 0.6比较合适
+
+#按resolutions = 0.6进行分群
+{
+#精简工作环境
+rm(object_0.5,object_0.75,object_for_clustree,set.resolutions)
+
+#object的分群
+object <- FindClusters(object, resolution = 0.6)
+object <- RunUMAP(object, dims = 1:10,dim.embed = 3)
+DimPlot(object, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+  ##得到4.resolutions = 0.6时的细胞分群图
+DimPlot(object, reduction = "umap", label = TRUE, pt.size = 0.5,
+        split.by = "group",ncol = 3) + NoLegend()
+  ##得到5.resolutions = 0.6时的细胞分群图（各样本）
+}
+
+saveRDS(object,"./Seurat_data（整理）/合并（分群后）.rds")
+
