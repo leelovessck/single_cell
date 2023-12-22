@@ -1,0 +1,225 @@
+rm(list = ls())
+setwd("D:/2023.10/PE scRNA（多数据库运行）")
+getwd()
+
+#打开必要的package
+{
+if(!require(Seurat))install.packages("Seurat")
+if(!require(clustree))install.packages("clustree")
+if(!require(devtools))install.packages("devtools")
+if(!require(presto))devtools::install_github("immunogenomics/presto")
+if(!require(tidyverse))install.packages("tidyverse")
+}
+
+#细胞注释的答疑
+{
+#注1：
+#presto包是针对FindAllMarkers函数的
+#使用presto包可以大大加快Wilcoxon检验的速度
+#安装并library（presto）之后即可自动调用
+#代码无需额外设置参数
+}
+
+#载入seurat对象
+#object <- readRDS("./Seurat_data（整理）/合并（分群后）.rds")
+#object <- JoinLayers(object)
+#saveRDS(object,"./Seurat_data（整理）/合并（分群+Layers）.rds")
+object <- readRDS("./Seurat_data（整理）/合并（分群+Layers）.rds")
+
+#首先得到各群细胞的marker
+{
+Idents(object) <- object@meta.data$orig.ident
+object.markers.all <- FindAllMarkers(object,
+                                     only.pos = TRUE,
+                                     min.pct = 0.25, logfc.threshold = 0.25,
+                                     verbose = TRUE)
+object.markers.all <- object.markers.all %>% group_by(cluster)
+write.csv(object.markers.all,file = "./result/3.2 细胞注释/1.全部细胞的all markers.csv")
+  ##得到1.全部细胞的all markers
+object.markers.top10 <- object.markers.all %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
+write.csv(object.markers.top10,file = "./result/3.2 细胞注释/2.全部细胞的top10 markers.csv")
+  ##得到2.全部细胞的top10 markers
+}
+
+#下面先处理血细胞
+{
+  ##红细胞最显著的marker为HBB、HBG、HBG1、HBA2、HBA1、ALAS2
+FeaturePlot(object,features = c("HBB","HBG1","HBA2","ALAS2"),raster=FALSE)
+  ##得到3.红细胞markers的表达图
+}
+
+#下面处理EVT
+{
+  ##EVT最显著的markers是HLA-G、PLAC8、ASCL2、EBI3、PAPPA和PAPPA2、HLA-E
+  ##EVT不表达HLA-A、HLA-B、HLA-DP、HLA-DQ和HLA-DR、HLA-DOB
+FeaturePlot(object,
+            features = c("HLA-G","PLAC8","ASCL2","EBI3","PAPPA",
+                         "PAPPA2","HLA-E","HLA-A","HLA-B","HLA-DP",
+                         "HLA-DQ","HLA-DR","HLA-DOB"),
+            raster=FALSE,
+            ncol = 4)
+  ##HLA-DP、HLA-DQ、HLA-DR没有找到
+  ##得到4.EVT细胞markers的表达图
+}
+
+#下面处理SCT
+{
+  ##EVT最显著的markers是CYP19A1、CGA、GH2、LGALS13、LGALS16、ERVFRD-1
+  ##EVT不表达HLA-A、HLA-B、HLA-DOB、CDH1
+FeaturePlot(object,
+            features = c("CYP19A1","CGA","GH2","LGALS13","LGALS16","ERVFRD-1",
+                         "HLA-A","HLA-B","HLA-DOB","CDH1"),
+            raster=FALSE,
+            ncol = 4)
+  ##得到5.SCT细胞markers的表达图
+}
+
+#下面处理VCT
+{
+  ##EVT最显著的markers是CDH1、EGFR、MKI67、CCNB1、CDK1、TOP2A、TEAD4、TPX2、TFAP2C
+FeaturePlot(object,
+            features = c("CDH1","EGFR","MKI67","CCNB1","CDK1",
+                         "TOP2A","TEAD4","TPX2","TFAP2C"),
+            raster=FALSE,
+            ncol = 4)
+  ##得到6.VCT细胞markers的表达图
+}
+
+#下面处理单核、巨噬、霍氏细胞
+{
+  ##巨噬细胞最显著的markers是CD74、RNASE1、SPP1、CD68+
+  ##巨噬细胞不表达CD14
+  ##单核细胞最显著的markers是CD14
+  ##Hofbauer细胞额外表达CD163、CD209
+FeaturePlot(object,
+            features = c("CD74","RNASE1","SPP1","CD68",
+                         "CD14","CD163","CD209"),
+            raster=FALSE,
+            ncol = 4)
+  ##得到7.单核、巨噬、霍氏细胞markers的表达图
+}
+
+#下面处理树突状细胞
+{
+  ##树突状细胞最显著的markers是CD14、CD52、CD83和CD86、FLT3、ITM2C
+FeaturePlot(object,
+            features = c("CD14","CD52","CD83","CD86","FLT3","ITM2C"),
+            raster=FALSE,
+            ncol = 4)
+  ##得到8.树突状细胞markers的表达图
+}
+
+#下面处理血管内皮、平滑肌细胞
+{
+  ##血管平滑肌细胞表达MYH11和CNN1
+  ##血管内皮细胞表达血管内皮基因CD34、PLVAP、CDH5和ICAM1、PECAM1
+FeaturePlot(object,
+            features = c("MYH11","CNN1","CD34","PLVAP","CDH5","ICAM1","PECAM1"),
+            raster=FALSE,
+            ncol = 4)
+  ##得到9.血管内皮、平滑肌细胞markers的表达图
+}
+
+#下面处理母体蜕膜细胞
+{
+  ##母体蜕膜细胞DKK1、IGFBP1和PRL表达较强
+FeaturePlot(object,
+            features = c("DKK1","IGFBP1","PRL"),
+            raster=FALSE,
+            ncol = 3)
+  ##得到10.母体蜕膜细胞markers的表达图
+}
+
+#下面处理基质细胞
+{
+  ##VIM和HLA-A高表达的簇是基质细胞
+  ##在基质细胞中，THY1高表达的簇为间充质细胞
+  ##IGFBP1是成纤维细胞标记基因
+  ##间充质干细胞低表达COL1A1、TAGLL，高表达LUM
+  ##成纤维细胞表达高表达COL1A1、TAGLN，低表达LUM
+FeaturePlot(object,
+            features = c("VIM","HLA-A","THY1","LUM",
+                         "IGFBP1","COL1A1","TAGLN"),
+            raster=FALSE,
+            ncol = 4)
+  ##得到11.基质细胞markers的表达图
+}
+
+#下面处理B、T、NK、浆细胞
+{
+  ##B细胞最显著的marker是CD79A、CD19、IgM
+  ##浆细胞还额外表达IgG, CD27, CD38, CD78, CD138, CD319
+FeaturePlot(object,
+            features = c("CD79A","CD19","CD27","CD38"),
+            raster=FALSE,
+            ncol = 2)
+  ##得到12.B、浆细胞markers的表达图
+
+  ##T细胞最显著的marker是CD2、CD5、CD7
+  ##T细胞区分CD4+和CD8+
+FeaturePlot(object,
+            features = c("CD2","CD5","CD7","CD4","CD8"),
+            raster=FALSE,
+            ncol = 3)
+  ##得到13.T细胞markers的表达图
+
+  ##NK细胞最显著的marker是CD16、CD56、NK1.1、CD49b、NKG7
+FeaturePlot(object,
+            features = c("NKG7"),
+            raster=FALSE)
+  ##得到14.NK细胞markers的表达图
+}
+
+#把细胞类型写入Seurat对象
+{
+new.cluster.ids <- c("0" = "Dendritic cell",
+                     "1" = "Macrophage",
+                     "2" = "Stromal cell",
+                     "3" = "Monocyte",
+                     "4" = "Smooth muscle cell",
+                     "5" = "B cell",
+                     "6" = "Hofbauer cell",
+                     "7" = "Monocyte",
+                     "8" = "VCT",
+                     "9" = "Dendritic cell",
+                     "10" = "Endothelial cell",
+                     "11" = "NK cell",
+                     "12" = "EVT",
+                     "13" = "VCT",
+                     "14" = "VCT",
+                     "15" = "EVT",
+                     "16" = "Decidual cell",
+                     "17" = "SCT",
+                     "18" = "Dendritic cell",
+                     "19" = "Macrophage",
+                     "20" = "Stromal cell",
+                     "21" = "T cell",
+                     "22" = "RBC",
+                     "23" = "T cell",
+                     "24" = "B cell",
+                     "25" = "EVT",
+                     "26" = "Smooth muscle cell",
+                     "27" = "Stromal cell",
+                     "28" = "Macrophage")
+names(new.cluster.ids) <- levels(object)
+object <- RenameIdents(object, new.cluster.ids)
+object@meta.data$celltype <- Idents(object)
+  ##把细胞分群写入meta.data
+Idents(object) <- object@meta.data$celltype
+saveRDS(object,"./Seurat_data（整理）/合并（细胞注释）.rds")
+}
+
+#得到各种细胞的marker
+{
+Idents(object) <- object@meta.data$celltype
+celltype.markers.all <- FindAllMarkers(object,
+                                       only.pos = TRUE,
+                                       min.pct = 0.25, logfc.threshold = 0.25,
+                                       verbose = TRUE)
+celltype.markers.all <- celltype.markers.all %>% group_by(cluster)
+write.csv(celltype.markers.all,file = "./result/3.2 细胞注释/15.各种细胞的all markers.csv")
+  ##得到1.全部细胞的all markers
+celltype.markers.top10 <- celltype.markers.all %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
+write.csv(celltype.markers.top10,file = "./result/3.2 细胞注释/16.各种细胞的top10 markers.csv")
+  ##得到2.全部细胞的top10 markers
+}
