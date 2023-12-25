@@ -1,0 +1,81 @@
+rm(list = ls())
+setwd("D:/2023.10/PE scRNA（GSE173193）/运行")
+getwd()
+
+#打开必要的package
+if(!require(org.Hs.eg.db))BiocManager::install("org.Hs.eg.db")
+if(!require(dplyr))install.packages("dplyr")
+if(!require(clusterProfiler))BiocManager::install("clusterProfiler")
+
+#自定义一个绘图函数，可以通过富集分析返回的数据框绘制气泡图
+erich2plot <- function(data4plot){
+  library(ggplot2)
+  data4plot <- data4plot[order(data4plot$qvalue,decreasing = F)[1:14],]
+  data4plot$BgRatio<-
+    apply(data4plot,1,function(x){
+      as.numeric(strsplit(x[3],'/')[[1]][1])
+    })/apply(data4plot,1,function(x){
+      as.numeric(strsplit(x[4],'/')[[1]][1])
+    })
+  
+  p <- ggplot(data4plot,aes(BgRatio,Description))
+  p<-p + geom_point()
+  
+  pbubble <- p + geom_point(aes(size=Count,color=-1*log10(qvalue)))
+  
+  pr <- pbubble + scale_colour_gradient(low="#90EE90",high="red") + 
+    labs(color=expression(-log[10](qvalue)),size="observed.gene.count", 
+         x="Richfactor", y="term.description",title="Enrichment Process")
+  
+  pr <- pr + theme_bw()
+  pr
+}
+
+#修改下载协议
+R.utils::setOption("clusterProfiler.download.method","auto")
+
+#滋养细胞的富集分析
+{
+  #载入数据
+diff_trophoblast <- read.csv("./result/3.差异表达基因/差异表达基因（滋养细胞）.csv")
+rownames(diff_trophoblast) <- diff_trophoblast[,1]
+colnames(diff_trophoblast)[1] <- "SYMBOL"
+trophoblastrich <- diff_trophoblast %>% top_n(n = -200, wt = p_val_adj) %>% rownames()
+
+#利用org.Hs.eg.db整合基因名、 ENTREZID、ENSEMBL
+trophoblastrich.df <- bitr(trophoblastrich,fromType="SYMBOL",toType=c("ENTREZID","ENSEMBL"),
+                           OrgDb = org.Hs.eg.db)
+
+#diff_trophoblast进行kegg富集分析
+{
+  trophoblastrichkegg <- enrichKEGG(unique(trophoblastrich.df$ENTREZID), organism='hsa',
+                                  pvalueCutoff=0.05,pAdjustMethod='BH',qvalueCutoff=0.2,
+                                  minGSSize=10,maxGSSize=500,use_internal_data=F)
+trophoblastrichkegg <- setReadable(trophoblastrichkegg,'org.Hs.eg.db','ENTREZID')  ##把ENTREZID转换为SYMBOL
+write.csv(trophoblastrichkegg@result,'./result/4.富集分析/4.trophoblast DEGS/trophoblast DEGs的KEGG结果.csv')
+erich2plot(trophoblastrichkegg@result)
+}
+  ##得到13.trophoblast DEGs的KEGG气泡图-保存pdf
+}
+
+#EVT细胞的富集分析
+diff_VCT <- read.csv("./result/3.差异表达基因/差异表达基因（VCT）.csv",header = TRUE)
+rownames(diff_VCT) <- diff_VCT[,1]
+colnames(diff_VCT)[1] <- "SYMBOL"
+VCTrich <- diff_VCT %>% top_n(n = -200, wt = p_val_adj) %>% rownames()
+VCTrich[1:10]
+VCTrich.df <- bitr(VCTrich,fromType="SYMBOL",toType=c("ENTREZID","ENSEMBL"),
+                   OrgDb = org.Hs.eg.db) 
+VCTrichkegg <- enrichKEGG(unique(VCTrich.df$ENTREZID), organism='hsa',
+                          pvalueCutoff=0.05,pAdjustMethod='BH',qvalueCutoff=0.2,
+                          minGSSize=10,maxGSSize=500,use_internal_data=F)
+VCTrichkegg <- setReadable(VCTrichkegg,'org.Hs.eg.db','ENTREZID')  ##把ENTREZID转换为SYMBOL
+write.csv(VCTrichkegg@result,'./result/4.富集分析/6.VCT DEGS/VCT DEGs的KEGG结果.csv')
+erich2plot(VCTrichkegg@result)
+  ##KEGG富集分析
+VCTrichgoMF <- enrichGO(VCTrich.df$SYMBOL, org.Hs.eg.db, keyType = "SYMBOL", ont = "MF",
+                        pvalueCutoff = 0.05, pAdjustMethod = "BH", qvalueCutoff = 0.2, minGSSize = 10,
+                        maxGSSize = 500, readable = FALSE, pool = FALSE)
+write.csv(VCTrichgoMF@result,"./result/4.富集分析/6.VCT DEGS/VCT DEGs的GO（MF）结果.csv")
+erich2plot(VCTrichgoMF@result)
+  ##GO（MF）富集分析
