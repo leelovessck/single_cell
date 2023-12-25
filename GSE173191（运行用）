@@ -1,0 +1,1249 @@
+rm(list = ls())
+setwd("D:/2023.10/PE scRNA（GSE173193）/运行")
+getwd()
+
+#打开必要的package
+if(!require(Seurat))remotes::install_github("satijalab/seurat", "seurat5", quiet = TRUE)
+if(!require(tidyverse))install.packages("tidyverse")
+if(!require(patchwork))install.packages("patchwork")
+if(!require(dplyr))install.packages("dplyr")
+if(!require(ggplot2))install.packages("ggplot2")
+if(!require(reshape2))install.packages("reshape2")
+if(!require(ggpubr))install.packages("ggpubr")
+if(!require(cowplot))install.packages("cowplot")
+if(!require(BiocManager))install.packages("BiocManager")
+if(!require(EnhancedVolcano))BiocManager::install("EnhancedVolcano")
+if(!require(rvcheck))devtools::install_version("rvcheck", version = "0.1.8", repos = "http://cran.us.r-project.org")
+if(!require(clusterProfiler))BiocManager::install("clusterProfiler")
+if(!require(org.Mm.eg.db))BiocManager::install("org.Mm.eg.db")
+if(!require(org.Hs.eg.db))BiocManager::install("org.Hs.eg.db")
+if(!require(patchwork))install.packages("patchwork")
+if(!require(ggsankey))devtools::install_github("davidsjoberg/ggsankey")
+if(!require(cols4all))install.packages("cols4all")
+if(!require(dittoSeq))BiocManager::install("dittoSeq")
+if(!require(NMF))install.packages('NMF')
+if(!require(circlize))devtools::install_github("jokergoo/circlize")
+if(!require(ComplexHeatmap))devtools::install_github("jokergoo/ComplexHeatmap") 
+if(!require(CellChat))devtools::install_github("sqjin/CellChat")
+if(!require(ggalluvial))install.packages('ggalluvial')
+if(!require(igraph))install.packages('igraph')
+if(!require(future))install.packages("future")
+if(!require(enrichplot))install.packages("enrichplot")
+
+#1.创建Seurat对象
+##1.1 一次性读取一个目录下的cellranger输出文件
+{
+samples <- list.files("raw_data")  ##列出路径中的样本
+samples
+dir <- file.path("raw_data",samples)  ##得到样本路径
+names(dir) <- samples
+dir
+counts <- Read10X(data.dir = dir)
+scRNA1 = CreateSeuratObject(counts)
+unique(scRNA1$orig.ident)  ##变量就存在这里
+scRNA1$sample <- scRNA1$orig.ident  ##转存变量到sample
+}
+
+##1.2 anchor前的质量控制
+{
+###1.2.1 查看质量控制前各细胞RNA表达数、RNA表达的种类数、线粒体RNA所占的比例
+scRNA1[["percent.mt"]] <- PercentageFeatureSet(scRNA1,pattern = "^MT-")
+preQC_scRNA1 <- VlnPlot(scRNA1, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
+                        ncol = 3, 
+                        group.by = "orig.ident", 
+                        pt.size = 0)
+preQC_scRNA1  ##得到1.原始质量图（anchor前）-保存pdf
+###1.2.2 查看细胞周期
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+scedata <- CellCycleScoring(scRNA1, 
+                            s.features = s.genes, 
+                            g2m.features = g2m.genes,
+                            set.ident = TRUE)
+VlnPlot(scedata,features = c("S.Score","G2M.Score"),group.by = "orig.ident")
+  ##得到2.原始细胞周期图（anchor前）-保存pdf
+###1.2.3 查看原始的细胞数目
+table(scRNA1$orig.ident)
+###1.2.4 质量控制
+scRNA1 <- subset(scRNA1, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 & percent.mt < 25)
+  ##限定RNA表达大于200且小于5000的例子，线粒体RNA比例不超过25%的细胞进入下一步分析 
+###1.2.5 查看质量控制后各细胞RNA表达数、RNA表达的种类数、线粒体RNA所占的比例
+preQC_scRNA1_after <- VlnPlot(scRNA1, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
+                        ncol = 3, 
+                        group.by = "orig.ident", 
+                        pt.size = 0)
+preQC_scRNA1_after  ##得到3.质量控制结果图（anchor前）-保存pdf
+###1.2.6 查看质量控制后的细胞数目
+table(scRNA1$orig.ident)
+}
+
+##1.3 利用anchor整合数据
+{
+###1.3.1 查看数据的分组
+unique(scRNA1$sample)  
+scRNA1.list <- SplitObject(scRNA1,split.by = "sample")  
+  ##查看具体分组情况
+PE1 <- scRNA1.list$PE1
+PE2 <- scRNA1.list$PE2
+control1 <- scRNA1.list$Control1
+control2 <- scRNA1.list$Control2
+###1.3.2 定义一个函数帮助NormalizeData（标准化表达矩阵）与FindVariableFeatures（高变基因计算）
+NorAndFind <- function(testA.seu){
+  testA.seu <- NormalizeData(testA.seu, normalization.method = "LogNormalize", scale.factor = 10000)
+  testA.seu <- FindVariableFeatures(testA.seu, selection.method = "vst", nfeatures = 2000)
+  return(testA.seu)
+}
+###1.3.3 执行对每个数据的NormalizeData（标准化表达矩阵）与FindVariableFeatures（高变基因计算）
+PE1 <- NorAndFind(PE1)
+PE2 <- NorAndFind(PE2)
+control1 <- NorAndFind(control1)
+control2 <- NorAndFind(control2)
+###1.3.4 利用anchor整合4个数据集
+#①先将PE1、PE2整合为PE，将control1、control2整合为control
+PE <- FindIntegrationAnchors(object.list = list(PE1,PE2),dims = 1:20)
+control <- FindIntegrationAnchors(object.list = list(control1,control2),dims = 1:20)
+PE.integrated <- IntegrateData(anchorset = PE, dims = 1:20)
+control.integrated <- IntegrateData(anchorset = control, dims = 1:20)
+PE.integrated$group <- "PE"
+control.integrated$group <- "control"
+#②将PE、control合并为一个矩阵
+testAB.anchors <- FindIntegrationAnchors(object.list = list(PE.integrated,control.integrated),dims = 1:20)
+testAB.integrated <- IntegrateData(anchorset = testAB.anchors, dims = 1:20)
+DefaultAssay(testAB.integrated) <- "integrated"
+  ##将后续计算用默认矩阵由"RNA"改为"integrated"
+}
+
+##1.4 anchor后的质量控制
+{
+###1.4.1 查看anchor后各细胞RNA表达数、RNA表达的种类数、线粒体RNA所占的比例
+preQC_testAB.integrated <- VlnPlot(testAB.integrated, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
+                                   ncol = 3, 
+                                   group.by = "orig.ident", 
+                                   pt.size = 0)
+preQC_testAB.integrated
+  ##得到4.质量控制结果图（anchor后）-保存pdf
+###1.4.2 细胞周期的查看
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+scedata <- CellCycleScoring(testAB.integrated, 
+                            s.features = s.genes, 
+                            g2m.features = g2m.genes,
+                            set.ident = TRUE)
+VlnPlot(scedata,features = c("S.Score","G2M.Score"),group.by = "orig.ident",pt.size =0.25)
+  ##得到5.anchor后细胞周期图（各样本）-保存图片
+VlnPlot(scedata,features = c("S.Score","G2M.Score"),group.by = "group",pt.size =0.25)
+  ##得到6.anchor后细胞周期图（各组）-保存图片
+}
+
+##1.5保存得到的Seurat文件
+saveRDS(testAB.integrated,"./Rdata/合并后的数据.rds")
+save.image(file = "./Rdata/创建Seurat对象.Rdata")
+
+#2.细胞分群和注释
+load(file = "./Rdata/创建Seurat对象.Rdata")
+##2.1精简工作环境
+rm(PE1)
+rm(PE2)
+rm(control1)
+rm(control2)
+rm(counts)
+rm(scRNA1)
+rm(scRNA1.list)
+rm(control)
+rm(control.integrated)
+rm(PE)
+rm(PE.integrated)
+rm(preQC_scRNA1)
+rm(preQC_scRNA1_after)
+rm(preQC_testAB.integrated)
+rm(scedata)
+rm(dir)
+rm(g2m.genes)
+rm(s.genes)
+rm(samples)
+save.image(file = "./Rdata/创建Seurat对象（精简工作环境）.Rdata")
+
+##2.2 细胞分群
+load(file = "./Rdata/创建Seurat对象（精简工作环境）.Rdata")
+###2.2.1 PCA分群
+testAB.integrated <- ScaleData(testAB.integrated, features = rownames(testAB.integrated))
+testAB.integrated <- RunPCA(testAB.integrated, npcs = 50, verbose = TRUE)
+testAB.integrated <- FindNeighbors(testAB.integrated, dims = 1:30)
+testAB.integrated <- FindClusters(testAB.integrated, resolution = 0.5)
+testAB.integrated <- RunUMAP(testAB.integrated, dims = 1:10)
+###2.2.2 PCA分群后的可视化
+#①显示细胞分群结果
+DimPlot(testAB.integrated, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+  ##resolution = 0.5时有19个细胞群
+  ##得到1.细胞分群图（总体）-保存pdf
+DimPlot(testAB.integrated, reduction = "umap", label = TRUE, pt.size = 0.5,split.by = "orig.ident",ncol = 2) + NoLegend()
+  ##得到2.细胞分群图（各样本）-保存pdf
+DimPlot(testAB.integrated, reduction = "umap", label = TRUE, pt.size = 0.5,split.by = "group",ncol = 2) + NoLegend()
+  ##得到3.细胞分群图（各组别）-保存pdf
+#②统计各群细胞的数量和比例
+table(testAB.integrated$seurat_clusters)  ##查看各细胞群细胞数
+testAB.integrated$group.clusters <- paste(testAB.integrated$seurat_clusters, testAB.integrated$group, sep = "_")
+table(testAB.integrated$group.clusters)  ##查看各细胞群细胞数（按组别分类）
+testAB.integrated$sample.clusters <- paste(testAB.integrated$seurat_clusters, testAB.integrated$sample, sep = "_")
+table(testAB.integrated$sample.clusters)  ##查看各细胞群细胞数（按样本分类）
+Cellratio_clusters <- prop.table(table(Idents(testAB.integrated), testAB.integrated$orig.ident), margin = 2)
+  ##计算各样本不同细胞群比例
+Cellratio_clusters <- as.data.frame(Cellratio_clusters)
+colourCount = length(unique(Cellratio_clusters$Var1))
+ggplot(Cellratio_clusters) + 
+  geom_bar(aes(x =Var2, y= Freq, fill = Var1),stat = "identity",width = 0.7,size = 0.5,colour = '#222222')+ 
+  theme_classic() +
+  labs(x='Sample',y = 'Ratio')+
+  coord_flip()+
+  theme(panel.border = element_rect(fill=NA,color="black", size=0.5, linetype="solid"))
+  ##得到4.不同细胞群比例图（各样本）-保存pdf
+Cellratio_group <- prop.table(table(Idents(testAB.integrated), testAB.integrated$group), margin = 2)
+  ##计算各样本不同细胞群比例
+Cellratio_group <- as.data.frame(Cellratio_group)
+colourCount = length(unique(Cellratio_group$Var1))
+ggplot(Cellratio_group) + 
+  geom_bar(aes(x =Var2, y= Freq, fill = Var1),stat = "identity",width = 0.7,size = 0.5,colour = '#222222')+ 
+  theme_classic() +
+  labs(x='Sample',y = 'Ratio')+
+  coord_flip()+
+  theme(panel.border = element_rect(fill=NA,color="black", size=0.5, linetype="solid"))
+  ##得到5.不同细胞群比例图（各组）-保存pdf
+#③对细胞比例假设检验
+Cellratio <- prop.table(table(Idents(testAB.integrated), testAB.integrated$orig.ident), margin = 2)#计算各组样本不同细胞群比例
+Cellratio <- data.frame(Cellratio)
+cellper <- dcast(Cellratio,Var2~Var1, value.var = "Freq")#长数据转为宽数据
+rownames(cellper) <- cellper[,1]
+cellper <- cellper[,-1]
+  ##创建假设检验使用的数据框
+sample <- c("Control1","Control2","PE1","PE2")
+group <- c("Control","Control","PE","PE")
+samples <- data.frame(sample, group)
+rownames(samples)=samples$sample
+cellper$sample <- samples[rownames(cellper),'sample']
+cellper$group <- samples[rownames(cellper),'group']
+pplist = list()
+sce_groups = c("0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18")
+for(group_ in sce_groups){
+  cellper_  = cellper %>% select(one_of(c('sample','group',group_)))#选择一组数据
+  colnames(cellper_) = c('sample','group','percent')#对选择数据列命名
+  cellper_$percent = as.numeric(cellper_$percent)#数值型数据
+  cellper_ <- cellper_ %>% group_by(group) %>% mutate(upper =  quantile(percent, 0.75), 
+                                                      lower = quantile(percent, 0.25),
+                                                      mean = mean(percent),
+                                                      median = median(percent))#上下分位数
+  print(group_)
+  print(cellper_$median)
+  
+  pp1 = ggplot(cellper_,aes(x=group,y=percent)) + #ggplot作图
+    geom_jitter(shape = 21,aes(fill=group),width = 0.25) + 
+    stat_summary(fun=mean, geom="point", color="grey60") +
+    theme_cowplot() +
+    theme(axis.text = element_text(size = 10),axis.title = element_text(size = 10),legend.text = element_text(size = 10),
+          legend.title = element_text(size = 10),plot.title = element_text(size = 10,face = 'plain'),legend.position = 'none') + 
+    labs(title = group_,y='Percentage') +
+    geom_errorbar(aes(ymin = lower, ymax = upper),col = "grey60",width =  1)
+  ###组间t检验分析
+  labely = max(cellper_$percent)
+  compare_means(percent ~ group,  data = cellper_)
+  my_comparisons <- list( c("Control", "PE") )
+  pp1 = pp1 + stat_compare_means(comparisons = my_comparisons,size = 3,method = "t.test")
+  pplist[[group_]] = pp1
+}
+plot_grid(pplist[["0"]],pplist[["1"]],pplist[["2"]],pplist[["3"]],pplist[["4"]],pplist[["5"]],pplist[["6"]],pplist[["7"]],pplist[["8"]],pplist[["9"]],pplist[["10"]],pplist[["11"]],pplist[["12"]],pplist[["13"]],pplist[["14"]],pplist[["15"]],pplist[["16"]],pplist[["17"]],pplist[["18"]])
+  ##获得6.各群细胞比例假设检验结果-保存pdf
+#④对细胞数假设检验
+Cellratio <- read.csv(file = "./other_data/细胞数假设检验用.csv")
+Cellratio <- data.frame(Cellratio)
+cellper <- dcast(Cellratio,Var2~Var1, value.var = "Freq")#长数据转为宽数据
+rownames(cellper) <- cellper[,1]
+cellper <- cellper[,-1]
+##创建假设检验使用的数据框
+sample <- c("Control1","Control2","PE1","PE2")
+group <- c("Control","Control","PE","PE")
+samples <- data.frame(sample, group)
+rownames(samples)=samples$sample
+cellper$sample <- samples[rownames(cellper),'sample']
+cellper$group <- samples[rownames(cellper),'group']
+pplist = list()
+sce_groups = c("0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18")
+for(group_ in sce_groups){
+  cellper_  = cellper %>% select(one_of(c('sample','group',group_)))#选择一组数据
+  colnames(cellper_) = c('sample','group','percent')#对选择数据列命名
+  cellper_$percent = as.numeric(cellper_$percent)#数值型数据
+  cellper_ <- cellper_ %>% group_by(group) %>% mutate(upper =  quantile(percent, 0.75), 
+                                                      lower = quantile(percent, 0.25),
+                                                      mean = mean(percent),
+                                                      median = median(percent))#上下分位数
+  print(group_)
+  print(cellper_$median)
+  
+  pp1 = ggplot(cellper_,aes(x=group,y=percent)) + #ggplot作图
+    geom_jitter(shape = 21,aes(fill=group),width = 0.25) + 
+    stat_summary(fun=mean, geom="point", color="grey60") +
+    theme_cowplot() +
+    theme(axis.text = element_text(size = 10),axis.title = element_text(size = 10),legend.text = element_text(size = 10),
+          legend.title = element_text(size = 10),plot.title = element_text(size = 10,face = 'plain'),legend.position = 'none') + 
+    labs(title = group_,y='Cell Numbers') +
+    geom_errorbar(aes(ymin = lower, ymax = upper),col = "grey60",width =  1)
+  ###组间t检验分析
+  labely = max(cellper_$percent)
+  compare_means(percent ~ group,  data = cellper_)
+  my_comparisons <- list( c("Control", "PE") )
+  pp1 = pp1 + stat_compare_means(comparisons = my_comparisons,size = 3,method = "t.test")
+  pplist[[group_]] = pp1
+}
+plot_grid(pplist[["0"]],pplist[["1"]],pplist[["2"]],pplist[["3"]],pplist[["4"]],pplist[["5"]],pplist[["6"]],pplist[["7"]],pplist[["8"]],pplist[["9"]],pplist[["10"]],pplist[["11"]],pplist[["12"]],pplist[["13"]],pplist[["14"]],pplist[["15"]],pplist[["16"]],pplist[["17"]],pplist[["18"]])
+  ##获得7.细胞数假设检验结果-保存pdf
+###2.2.3 精简工作环境
+rm(cellper)
+rm(cellper_)
+rm(Cellratio)
+rm(Cellratio_clusters)
+rm(Cellratio_group)
+rm(my_comparisons)
+rm(pp1)
+rm(pplist)
+rm(samples)
+rm(colourCount)
+rm(group)
+rm(group_)
+rm(labely)
+rm(sample)
+rm(sce_groups)
+###2.2.3 寻找各群细胞的marker
+testAB.markers <- FindAllMarkers(testAB.integrated, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+testAB.markers <- testAB.markers %>% group_by(cluster)
+  ##write.csv(testAB.markers,file = "./result/all Marker.csv")
+top10 <- testAB.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_log2FC)
+  ##write.csv(top10,file = "./other_data/top10 Marker.csv")
+top2 <- testAB.markers %>% group_by(cluster) %>% top_n(n = 2, wt = avg_log2FC)
+  ##write.csv(top2,file = "./other_data/top2 Marker.csv")
+###2.2.4 各群细胞marker的可视化
+markers <- c("CXCL8","AC023157.3",
+             "HSD17B1","CLIC3",
+             "SPP1","RNASE1",
+             "CYR61","CLDN4",
+             "S100A12","S100A4",
+             "TYMS","UBE2C",
+             "CAMP","LTF",
+             "SERPINE2","FN1",
+             "DEFA3","MPO",
+             "IL7R","ITM2A",
+             "CGA","KISS1",
+             "GNLY","GZMB",
+             "TIMP1","VCAN",
+             "DLK1","TAGLN",
+             "AREG","C1QTNF4",
+             "HBG2","HBA2",
+             "IGKC","HLA-DRA",
+             "PPBP","PF4",
+             "ISG15","IFIT3")
+DotPlot(testAB.integrated,features = markers)+coord_flip()
+  ##得到8.各群细胞Markers点图-保存pdf
+VlnPlot(testAB.integrated, features = c("CXCL8","AC023157.3"),pt.size = 0.5 ,slot = "counts",log = TRUE,assay = "integrated")
+  ##得到9.细胞cluster0的Markers小提琴图-保存图片（1300*600）
+VlnPlot(testAB.integrated, features = c("HSD17B1","CLIC3"), pt.size = 0.5 ,slot = "counts",log = TRUE,assay = "integrated")
+  ##得到10.细胞cluster1的Markers小提琴图-保存图片（1300*600）
+VlnPlot(testAB.integrated, features = c("SPP1","RNASE1"), pt.size = 0.5 ,slot = "counts",log = TRUE,assay = "integrated")
+  ##得到11.细胞cluster2的Markers小提琴图-保存图片（1300*600）
+VlnPlot(testAB.integrated, features = c("CYR61","CLDN4"), pt.size = 0.5 ,slot = "counts",log = TRUE,assay = "integrated")
+  ##得到12.细胞cluster3的Markers小提琴图-保存图片（1300*600）
+VlnPlot(testAB.integrated, features = c("S100A12","S100A4"), pt.size = 0.5 ,slot = "counts",log = TRUE,assay = "integrated")
+  ##得到13.细胞cluster4的Markers小提琴图-保存图片（1300*600）
+VlnPlot(testAB.integrated, features = c("TYMS","UBE2C"), pt.size = 0.5 ,slot = "counts",log = TRUE,assay = "integrated")
+  ##得到14.细胞cluster5的Markers小提琴图-保存图片（1300*600）
+VlnPlot(testAB.integrated, features = c("CAMP","LTF"), pt.size = 0.5 ,slot = "counts",log = TRUE,assay = "integrated")
+  ##得到15.细胞cluster6的Markers小提琴图-保存图片（1300*600）
+VlnPlot(testAB.integrated, features = c("SERPINE2","FN1"), pt.size = 0.5 ,slot = "counts",log = TRUE,assay = "integrated")
+  ##得到16.细胞cluster7的Markers小提琴图-保存图片（1300*600）
+VlnPlot(testAB.integrated, features = c("DEFA3","MPO"), pt.size = 0.5 ,slot = "counts",log = TRUE,assay = "integrated")
+  ##得到17.细胞cluster8的Markers小提琴图-保存图片（1300*600）
+VlnPlot(testAB.integrated, features = c("IL7R","ITM2A"), pt.size = 0.5 ,slot = "counts",log = TRUE,assay = "integrated")
+  ##得到18.细胞cluster9的Markers小提琴图-保存图片（1300*600）
+VlnPlot(testAB.integrated, features = c("CGA","KISS1"), pt.size = 0.5 ,slot = "counts",log = TRUE,assay = "integrated")
+  ##得到19.细胞cluster10的Markers小提琴图-保存图片（1300*600）
+VlnPlot(testAB.integrated, features = c("GNLY","GZMB"), pt.size = 0.5 ,slot = "counts",log = TRUE,assay = "integrated")
+  ##得到20.细胞cluster11的Markers小提琴图-保存图片（1300*600）
+VlnPlot(testAB.integrated, features = c("TIMP1","VCAN"), pt.size = 0.5 ,slot = "counts",log = TRUE,assay = "integrated")
+  ##得到21.细胞cluster12的Markers小提琴图-保存图片（1300*600）
+VlnPlot(testAB.integrated, features = c("DLK1","TAGLN"), pt.size = 0.5 ,slot = "counts",log = TRUE,assay = "integrated")
+  ##得到22.细胞cluster13的Markers小提琴图-保存图片（1300*600）
+VlnPlot(testAB.integrated, features = c("AREG","C1QTNF4"), pt.size = 0.5 ,slot = "counts",log = TRUE,assay = "integrated")
+  ##得到23.细胞cluster14的Markers小提琴图-保存图片（1300*600）
+VlnPlot(testAB.integrated, features = c("HBG2","HBA2"), pt.size = 0.5 ,slot = "counts",log = TRUE,assay = "integrated")
+  ##得到24.细胞cluster15的Markers小提琴图-保存图片（1300*600）
+VlnPlot(testAB.integrated, features = c("IGKC","HLA-DRA"), pt.size = 0.5 ,slot = "counts",log = TRUE,assay = "integrated")
+  ##得到25.细胞cluster16的Markers小提琴图-保存图片（1300*600）
+VlnPlot(testAB.integrated, features = c("PPBP","PF4"), pt.size = 0.5 ,slot = "counts",log = TRUE,assay = "integrated")
+  ##得到26.细胞cluster17的Markers小提琴图-保存图片（1300*600）
+VlnPlot(testAB.integrated, features = c("ISG15","IFIT3"), pt.size = 0.5 ,slot = "counts",log = TRUE,assay = "integrated")
+  ##得到27.细胞cluster18的Markers小提琴图-保存图片（1300*600）
+
+##2.3 细胞注释
+###2.3.1  手动注释
+new.cluster.ids <- c("Macrophage",
+                     "SCT",
+                     "Hofbauer cell",
+                     "SCT",
+                     "Macrophage",
+                     "VCT",
+                     "Monocyte",
+                     "EVT",
+                     "Monocyte",
+                     "T cell",
+                     "SCT",
+                     "T cell",
+                     "Fibroblast",
+                     "Fibroblast",
+                     "EVT",
+                     "Red blood cell",
+                     "Macrophage",
+                     "T cell",
+                     "Macrophage")
+names(new.cluster.ids) <- levels(testAB.integrated)
+testAB.integrated <- RenameIdents(testAB.integrated, new.cluster.ids)
+testAB.integrated@meta.data$new.cluster.ids <- Idents(testAB.integrated)
+testAB.integrated@meta.data$celltype <- testAB.integrated@meta.data$new.cluster.ids
+  ##给new.cluster.ids改名celltype
+cellgroup.markers <- FindAllMarkers(testAB.integrated, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+cellgroup.markers <- cellgroup.markers %>% group_by(cluster)
+  ##write.csv(cellgroup.markers,file = "./result/cell Marker.csv")
+  ##找出各类细胞的marker
+###2.3.2 注释后的可视化
+#①显示细胞注释结果
+DimPlot(testAB.integrated, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+  ##得到28.细胞注释图（总体）-保存pdf
+DimPlot(testAB.integrated, reduction = "umap", label = TRUE, pt.size = 0.5,split.by = "orig.ident",ncol = 2) + NoLegend()
+  ##得到29.细胞注释图（各样本）-保存pdf
+DimPlot(testAB.integrated, reduction = "umap", label = TRUE, pt.size = 0.5,split.by = "group",ncol = 2) + NoLegend()
+  ##得到30.细胞注释图（各组）-保存pdf
+DotPlot(testAB.integrated,features = markers)+coord_flip()
+  ##得到31.各类细胞marker表达情况（点图）
+DoHeatmap(testAB.integrated, features = markers) + NoLegend()
+  ##得到32.各类细胞marker表达情况（热图）
+#②统计各群细胞的数量和比例
+table(testAB.integrated$celltype)  ##查看各细胞群细胞数
+testAB.integrated$group.celltype <- paste(testAB.integrated$celltype, testAB.integrated$group, sep = "_")
+table(testAB.integrated$group.clusters)  ##查看各细胞群细胞数（按组别分类）
+testAB.integrated$sample.celltype <- paste(testAB.integrated$celltype, testAB.integrated$sample, sep = "_")
+table(testAB.integrated$sample.celltype)  ##查看各细胞群细胞数（按样本分类）
+Cellratio_clusters <- prop.table(table(Idents(testAB.integrated), testAB.integrated$orig.ident), margin = 2)
+  ##计算各样本不同细胞群比例
+Cellratio_clusters <- as.data.frame(Cellratio_clusters)
+colourCount = length(unique(Cellratio_clusters$Var1))
+ggplot(Cellratio_clusters) + 
+  geom_bar(aes(x =Var2, y= Freq, fill = Var1),stat = "identity",width = 0.7,size = 0.5,colour = '#222222')+ 
+  theme_classic() +
+  labs(x='Sample',y = 'Ratio')+
+  coord_flip()+
+  theme(panel.border = element_rect(fill=NA,color="black", size=0.5, linetype="solid"))
+  ##得到33.不同类型细胞比例图（各样本）-保存pdf
+Cellratio_group <- prop.table(table(Idents(testAB.integrated), testAB.integrated$group), margin = 2)
+  ##计算各样本不同细胞群比例
+Cellratio_group <- as.data.frame(Cellratio_group)
+colourCount = length(unique(Cellratio_group$Var1))
+ggplot(Cellratio_group) + 
+  geom_bar(aes(x =Var2, y= Freq, fill = Var1),stat = "identity",width = 0.7,size = 0.5,colour = '#222222')+ 
+  theme_classic() +
+  labs(x='Sample',y = 'Ratio')+
+  coord_flip()+
+  theme(panel.border = element_rect(fill=NA,color="black", size=0.5, linetype="solid"))
+  ##得到34.不同类型细胞比例图（各组）-保存pdf
+#③对细胞比例假设检验
+Cellratio <- prop.table(table(Idents(testAB.integrated), testAB.integrated$orig.ident), margin = 2)#计算各组样本不同细胞群比例
+Cellratio <- data.frame(Cellratio)
+cellper <- dcast(Cellratio,Var2~Var1, value.var = "Freq")#长数据转为宽数据
+rownames(cellper) <- cellper[,1]
+cellper <- cellper[,-1]
+##创建假设检验使用的数据框
+sample <- c("Control1","Control2","PE1","PE2")
+group <- c("Control","Control","PE","PE")
+samples <- data.frame(sample, group)
+rownames(samples)=samples$sample
+cellper$sample <- samples[rownames(cellper),'sample']
+cellper$group <- samples[rownames(cellper),'group']
+pplist = list()
+sce_groups = c("Macrophage","SCT","Hofbauer cell","VCT","Monocyte","EVT","T cell","Fibroblast","Red blood cell")
+for(group_ in sce_groups){
+  cellper_  = cellper %>% select(one_of(c('sample','group',group_)))#选择一组数据
+  colnames(cellper_) = c('sample','group','percent')#对选择数据列命名
+  cellper_$percent = as.numeric(cellper_$percent)#数值型数据
+  cellper_ <- cellper_ %>% group_by(group) %>% mutate(upper =  quantile(percent, 0.75), 
+                                                      lower = quantile(percent, 0.25),
+                                                      mean = mean(percent),
+                                                      median = median(percent))#上下分位数
+  print(group_)
+  print(cellper_$median)
+  
+  pp1 = ggplot(cellper_,aes(x=group,y=percent)) + #ggplot作图
+    geom_jitter(shape = 21,aes(fill=group),width = 0.25) + 
+    stat_summary(fun=mean, geom="point", color="grey60") +
+    theme_cowplot() +
+    theme(axis.text = element_text(size = 10),axis.title = element_text(size = 10),legend.text = element_text(size = 10),
+          legend.title = element_text(size = 10),plot.title = element_text(size = 10,face = 'plain'),legend.position = 'none') + 
+    labs(title = group_,y='Percentage') +
+    geom_errorbar(aes(ymin = lower, ymax = upper),col = "grey60",width =  1)
+  ###组间t检验分析
+  labely = max(cellper_$percent)
+  compare_means(percent ~ group,  data = cellper_)
+  my_comparisons <- list( c("Control", "PE") )
+  pp1 = pp1 + stat_compare_means(comparisons = my_comparisons,size = 3,method = "t.test")
+  pplist[[group_]] = pp1
+}
+plot_grid(pplist[["Macrophage"]],pplist[["SCT"]],pplist[["Hofbauer cell"]],pplist[["VCT"]],pplist[["Monocyte"]],pplist[["EVT"]],pplist[["T cell"]],pplist[["Fibroblast"]],pplist[["Red blood cell"]])
+  ##获得35.各类细胞比例假设检验结果-保存pdf
+#④对细胞数假设检验
+Cellratio <- read.csv(file = "./other_data/细胞数假设检验用（注释后）.csv")
+Cellratio <- data.frame(Cellratio)
+cellper <- dcast(Cellratio,Var2~Var1, value.var = "Freq")#长数据转为宽数据
+rownames(cellper) <- cellper[,1]
+cellper <- cellper[,-1]
+  ##创建假设检验使用的数据框
+sample <- c("Control1","Control2","PE1","PE2")
+group <- c("Control","Control","PE","PE")
+samples <- data.frame(sample, group)
+rownames(samples)=samples$sample
+cellper$sample <- samples[rownames(cellper),'sample']
+cellper$group <- samples[rownames(cellper),'group']
+pplist = list()
+sce_groups = c("Macrophage","SCT","Hofbauer cell","VCT","Monocyte","EVT","T cell","Fibroblast","Red blood cell")
+for(group_ in sce_groups){
+  cellper_  = cellper %>% select(one_of(c('sample','group',group_)))#选择一组数据
+  colnames(cellper_) = c('sample','group','percent')#对选择数据列命名
+  cellper_$percent = as.numeric(cellper_$percent)#数值型数据
+  cellper_ <- cellper_ %>% group_by(group) %>% mutate(upper =  quantile(percent, 0.75), 
+                                                      lower = quantile(percent, 0.25),
+                                                      mean = mean(percent),
+                                                      median = median(percent))#上下分位数
+  print(group_)
+  print(cellper_$median)
+  
+  pp1 = ggplot(cellper_,aes(x=group,y=percent)) + #ggplot作图
+    geom_jitter(shape = 21,aes(fill=group),width = 0.25) + 
+    stat_summary(fun=mean, geom="point", color="grey60") +
+    theme_cowplot() +
+    theme(axis.text = element_text(size = 10),axis.title = element_text(size = 10),legend.text = element_text(size = 10),
+          legend.title = element_text(size = 10),plot.title = element_text(size = 10,face = 'plain'),legend.position = 'none') + 
+    labs(title = group_,y='Cell Numbers') +
+    geom_errorbar(aes(ymin = lower, ymax = upper),col = "grey60",width =  1)
+  ###组间t检验分析
+  labely = max(cellper_$percent)
+  compare_means(percent ~ group,  data = cellper_)
+  my_comparisons <- list( c("Control", "PE") )
+  pp1 = pp1 + stat_compare_means(comparisons = my_comparisons,size = 3,method = "t.test")
+  pplist[[group_]] = pp1
+}
+plot_grid(pplist[["Macrophage"]],pplist[["SCT"]],pplist[["Hofbauer cell"]],pplist[["VCT"]],pplist[["Monocyte"]],pplist[["EVT"]],pplist[["T cell"]],pplist[["Fibroblast"]],pplist[["Red blood cell"]])
+  ##获得36.各类细胞比例假设检验结果-保存pdf
+###2.3.3 精简工作环境
+rm(cellper)
+rm(cellper_)
+rm(Cellratio)
+rm(Cellratio_clusters)
+rm(Cellratio_group)
+rm(my_comparisons)
+rm(pp1)
+rm(pplist)
+rm(samples)
+rm(colourCount)
+rm(group)
+rm(group_)
+rm(labely)
+rm(sample)
+rm(sce_groups)
+
+##2.4 保存工作环境
+save.image(file = "./Rdata/细胞注释.Rdata")
+saveRDS(testAB.integrated,"./Rdata/细胞注释后的数据.rds")
+
+#3.寻找差异基因
+##3.1 寻找VCT的差异表达基因
+VCT <- subset(testAB.integrated, celltype=="VCT")
+diff_VCT <- FindMarkers(VCT, min.pct = 0.25, 
+                        logfc.threshold = 0.10,
+                        group.by = "group",
+                        ident.1 ="control",
+                        ident.2="PE")
+write.csv(diff_VCT,file = "./result/3.差异表达基因/差异表达基因（VCT）.csv")
+  ##得到VCT的差异表达基因
+EnhancedVolcano(diff_VCT,
+                lab = rownames(diff_VCT),
+                x = 'avg_log2FC',
+                y = 'p_val_adj',
+                pCutoff = 0.05,
+                FCcutoff = 0.25,
+                pointSize = 3.0,
+                labSize = 6.0,
+                title = 'diff_VCT')
+  ##得到VCT的差异表达基因（火山图）-保存pdf
+
+##3.2 寻找SCT的差异表达基因
+SCT <- subset(testAB.integrated, celltype=="SCT")
+diff_SCT <- FindMarkers(SCT, min.pct = 0.25, 
+                        logfc.threshold = 0.10,
+                        group.by = "group",
+                        ident.1 ="control",
+                        ident.2="PE")
+write.csv(diff_SCT,file = "./result/3.差异表达基因/差异表达基因（SCT）.csv")
+  ##得到SCT的差异表达基因
+EnhancedVolcano(diff_SCT,
+                lab = rownames(diff_SCT),
+                x = 'avg_log2FC',
+                y = 'p_val_adj',
+                pCutoff = 0.05,
+                FCcutoff = 0.25,
+                pointSize = 3.0,
+                labSize = 6.0,
+                title = 'diff_SCT')
+  ##得到SCT的差异表达基因（火山图）-保存pdf
+
+##3.3 寻找EVT的差异表达基因
+EVT <- subset(testAB.integrated, celltype=="EVT")
+diff_EVT <- FindMarkers(EVT, min.pct = 0.25, 
+                        logfc.threshold = 0.10,
+                        group.by = "group",
+                        ident.1 ="control",
+                        ident.2="PE")
+write.csv(diff_EVT,file = "./result/3.差异表达基因/差异表达基因（EVT）.csv")
+  ##得到EVT的差异表达基因
+EnhancedVolcano(diff_EVT,
+                lab = rownames(diff_EVT),
+                x = 'avg_log2FC',
+                y = 'p_val_adj',
+                pCutoff = 0.05,
+                FCcutoff = 0.25,
+                pointSize = 3.0,
+                labSize = 6.0,
+                title = 'diff_EVT')
+  ##得到EVT的差异表达基因（火山图）-保存pdf
+
+##3.4 寻找全部细胞的差异表达基因
+bulk <- subset(testAB.integrated)
+diff_bulk <- FindMarkers(bulk, min.pct = 0.25, 
+                        logfc.threshold = 0.10,
+                        group.by = "group",
+                        ident.1 ="control",
+                        ident.2="PE")
+write.csv(diff_bulk,file = "./result/3.差异表达基因/差异表达基因（全部细胞）.csv")
+  ##得到全部细胞的差异表达基因
+EnhancedVolcano(diff_bulk,
+                lab = rownames(diff_bulk),
+                x = 'avg_log2FC',
+                y = 'p_val_adj',
+                pCutoff = 0.05,
+                FCcutoff = 0.25,
+                pointSize = 3.0,
+                labSize = 6.0,
+                title = 'diff_bulk')
+  ##得到全部细胞的差异表达基因（火山图）-保存pdf                x = 'avg_log2FC',
+
+##3.5  寻找滋养细胞的差异表达基因
+trophoblast <- FindIntegrationAnchors(object.list = list(VCT,SCT,EVT),dims = 1:20)
+trophoblast.integrated <- IntegrateData(anchorset = trophoblast, dims = 1:20)
+diff_trophoblast <- FindMarkers(trophoblast.integrated, min.pct = 0.25, 
+                         logfc.threshold = 0.10,
+                         group.by = "group",
+                         ident.1 ="control",
+                         ident.2="PE")
+write.csv(diff_trophoblast,file = "./result/3.差异表达基因/差异表达基因（滋养细胞）.csv")
+##得到全部细胞的差异表达基因
+EnhancedVolcano(diff_trophoblast,
+                lab = rownames(diff_trophoblast),
+                x = 'avg_log2FC',
+                y = 'p_val_adj',
+                pCutoff = 0.05,
+                FCcutoff = 0.25,
+                pointSize = 3.0,
+                labSize = 6.0,
+                title = 'diff_trophoblast')
+  ##得到滋养细胞的差异表达基因（火山图）-保存pdf
+
+#4.富集分析
+##4.1 富集分析前的准备工作
+###4.1.1 自定义一个绘图函数，可以通过富集分析返回的数据框绘制气泡图
+erich2plot <- function(data4plot){
+  library(ggplot2)
+  data4plot <- data4plot[order(data4plot$qvalue,decreasing = F)[1:20],]
+  data4plot$BgRatio<-
+    apply(data4plot,1,function(x){
+      as.numeric(strsplit(x[3],'/')[[1]][1])
+    })/apply(data4plot,1,function(x){
+      as.numeric(strsplit(x[4],'/')[[1]][1])
+    })
+  
+  p <- ggplot(data4plot,aes(BgRatio,Description))
+  p<-p + geom_point()
+  
+  pbubble <- p + geom_point(aes(size=Count,color=-1*log10(qvalue)))
+  
+  pr <- pbubble + scale_colour_gradient(low="#90EE90",high="red") + 
+    labs(color=expression(-log[10](qvalue)),size="observed.gene.count", 
+         x="Richfactor", y="term.description",title="Enrichment Process")
+  
+  pr <- pr + theme_bw()
+  pr
+}
+###4.1.2 修改下载协议
+R.utils::setOption("clusterProfiler.download.method","auto")
+
+##4.2 EVTmarker的下游分析（PE中EVT比例升高）
+EVT.marker <- read.csv("./other_data/EVT marker.csv")
+rownames(EVT.marker) = EVT.marker[,1]
+EVT.marker <- EVT.marker[,-1]
+EVTrichmarker <- EVT.marker %>% top_n(n = -200, wt = p_val_adj) %>% rownames()
+EVTrichmarker[1:10]
+###4.2.1 利用org.Hs.eg.db整合基因名、 ENTREZID、ENSEMBL
+EVT.marker.df <- bitr(EVTrichmarker,fromType="SYMBOL",toType=c("ENTREZID","ENSEMBL"),
+                      OrgDb = org.Hs.eg.db) 
+EVT.marker.df <- dplyr::distinct(EVT.marker.df,SYMBOL,.keep_all=TRUE)  ##去重
+###4.2.2 EVT的marker进行kegg富集分析
+EVTmarkerkegg <- enrichKEGG(unique(EVT.marker.df$ENTREZID), organism='hsa',
+                            pvalueCutoff=0.05,pAdjustMethod='BH',qvalueCutoff=0.2,
+                            minGSSize=10,maxGSSize=500,use_internal_data=F)
+EVTmarkerkegg <- setReadable(EVTmarkerkegg,'org.Hs.eg.db','ENTREZID')  ##把ENTREZID转换为SYMBOL
+write.csv(EVTmarkerkegg@result,'./result/4.富集分析/1.EVT marker/EVTmarker的KEGG结果.csv')
+erich2plot(EVTmarkerkegg@result)
+  ##得到1.EVT marker的KEGG气泡图-保存pdf
+###4.2.3 EVT的marker进行GO富集分析（molecular function）
+EVTmarkergoMF <- enrichGO(EVT.marker.df$SYMBOL, org.Hs.eg.db, keyType = "SYMBOL", ont = "MF",
+                          pvalueCutoff = 0.05, pAdjustMethod = "BH", qvalueCutoff = 0.2, minGSSize = 10,
+                          maxGSSize = 500, readable = FALSE, pool = FALSE)
+write.csv(EVTmarkergoMF@result,"./result/4.富集分析/1.EVT marker/EVTmarker的GO（MF）结果.csv")
+erich2plot(EVTmarkergoMF@result)
+  ##得到2.EVT marker的GO（MF）气泡图-保存pdf
+###4.2.4 EVT的marker进行GO富集分析（cell component）
+EVTmarkergoCC <- enrichGO(EVT.marker.df$SYMBOL, org.Hs.eg.db, keyType = "SYMBOL", ont = "CC",
+                          pvalueCutoff = 0.05, pAdjustMethod = "BH", qvalueCutoff = 0.2, minGSSize = 10,
+                          maxGSSize = 500, readable = FALSE, pool = FALSE)
+write.csv(EVTmarkergoCC@result,'./result/4.富集分析/1.EVT marker/EVTmarker的GO（CC）结果.csv')
+erich2plot(EVTmarkergoCC@result)
+  ##得到3.EVT marker的GO（CC）气泡图-保存pdf
+###4.2.5 EVT的marker进行GO富集分析（biological process）
+EVTmarkergoBP <- enrichGO(EVT.marker.df$SYMBOL, org.Hs.eg.db, keyType = "SYMBOL", ont = "BP",
+                          pvalueCutoff = 0.05, pAdjustMethod = "BH", qvalueCutoff = 0.2, minGSSize = 10,
+                          maxGSSize = 500, readable = FALSE, pool = FALSE)
+write.csv(EVTmarkergoBP@result,'./result/4.富集分析/1.EVT marker/EVTmarker的GO（BP）结果.csv')
+erich2plot(EVTmarkergoBP@result)
+  ##得到4.EVT marker的GO（BP）气泡图-保存pdf
+###4.2.6 EVT的marker进行GSEA分析
+#①KEGG的GSEA分析
+gene <- EVT.marker
+gene$SYMBOL <- rownames(gene)
+mygene <- str_trim(gene$SYMBOL,"both")  ##筛选gene，变为list，以下一步转换
+mygene <- bitr(mygene,fromType="SYMBOL",toType=c("ENTREZID","ENSEMBL"),
+               OrgDb = org.Hs.eg.db)
+  ##基因ID转换
+mygene <- dplyr::distinct(mygene,SYMBOL,.keep_all=TRUE)  ##去重
+gene_df <- merge(mygene,gene,by="SYMBOL")
+genelist <- gene_df$avg_log2FC
+names(genelist) <- gene_df$ENTREZID
+geneList <- sort(genelist,decreasing = T)   
+  ##定义基因列表，对logFC进行从高到低排序
+kegg_gmt <- read.gmt("E:/GSEA的GST数据/c2 entrez.gmt")  
+  ##读gmt文件
+KEGG <- GSEA(geneList,TERM2GENE = kegg_gmt)  #GSEA分析
+write.csv(KEGG@result,file = "./result/4.富集分析/1.EVT marker/GSEA/KEGG的GESA结果.csv")
+  ##保存GSEA结果
+dotplot(KEGG,split=".sign")+facet_grid(~.sign) #出点图，并且分面激活和抑制
+dotplot(KEGG,split=".sign")+facet_wrap(~.sign,scales = "free") #换个显示方式
+  ##得到1.KEGG的GSEA结果汇总-保存pdf
+gseaplot2(KEGG,c(1),color = "red",pvalue_table = T)  ##按第一个做二维码图，并显示p值
+  ##得到2.KEGG的GSEA结果折线图-保存pdf
+#②GO的GSEA分析
+gene <- EVT.marker
+gene$SYMBOL <- rownames(gene)
+mygene <- str_trim(gene$SYMBOL,"both")  ##筛选gene，变为list，以下一步转换
+mygene <- bitr(mygene,fromType="SYMBOL",toType=c("ENTREZID","ENSEMBL"),
+               OrgDb = org.Hs.eg.db)
+  ##基因ID转换
+mygene <- dplyr::distinct(mygene,SYMBOL,.keep_all=TRUE)  ##去重
+gene_df <- merge(mygene,gene,by="SYMBOL")
+genelist <- gene_df$avg_log2FC
+names(genelist) <- gene_df$ENTREZID
+geneList <- sort(genelist,decreasing = T)   
+  ##定义基因列表，对logFC进行从高到低排序
+kegg_gmt <- read.gmt("E:/GSEA的GST数据/c5 entrez.gmt")  
+  ##读gmt文件
+KEGG <- GSEA(geneList,TERM2GENE = kegg_gmt)  #GSEA分析
+  ##GO富集没有得到结果
+
+##4.3 VCTmarker的下游分析（PE中VCT比例升高）
+VCT.marker <- read.csv("./other_data/VCT marker.csv")
+rownames(VCT.marker) = VCT.marker[,1]
+VCTrichmarker <- VCT.marker %>% top_n(n = -200, wt = p_val_adj) %>% rownames()
+VCTrichmarker[1:10]
+###4.3.1 利用org.Hs.eg.db整合基因名、 ENTREZID、ENSEMBL
+VCT.marker.df <- bitr(VCTrichmarker,fromType="SYMBOL",toType=c("ENTREZID","ENSEMBL"),
+                      OrgDb = org.Hs.eg.db) 
+###4.3.2 VCT的marker进行kegg富集分析
+VCTmarkerkegg <- enrichKEGG(unique(VCT.marker.df$ENTREZID), organism='hsa',
+                            pvalueCutoff=0.05,pAdjustMethod='BH',qvalueCutoff=0.2,
+                            minGSSize=10,maxGSSize=500,use_internal_data=F)
+VCTmarkerkegg <- setReadable(VCTmarkerkegg,'org.Hs.eg.db','ENTREZID')  ##把ENTREZID转换为SYMBOL
+write.csv(VCTmarkerkegg@result,'./result/4.富集分析/2.VCT marker/VCTmarker的KEGG结果.csv')
+erich2plot(VCTmarkerkegg@result)
+  ##得到5.VCT marker的KEGG气泡图-保存pdf
+###4.3.3 EVT的marker进行GO富集分析（molecular function）
+VCTmarkergoMF <- enrichGO(VCT.marker.df$SYMBOL, org.Hs.eg.db, keyType = "SYMBOL", ont = "MF",
+                          pvalueCutoff = 0.05, pAdjustMethod = "BH", qvalueCutoff = 0.2, minGSSize = 10,
+                          maxGSSize = 500, readable = FALSE, pool = FALSE)
+write.csv(VCTmarkergoMF@result,"./result/4.富集分析/2.VCT marker/VCTmarker的GO（MF）结果.csv")
+erich2plot(VCTmarkergoMF@result)
+  ##得到6.VCT marker的GO（MF）气泡图-保存pdf
+###4.3.4 VCT的marker进行GO富集分析（cell component）
+VCTmarkergoCC <- enrichGO(VCT.marker.df$SYMBOL, org.Hs.eg.db, keyType = "SYMBOL", ont = "CC",
+                          pvalueCutoff = 0.05, pAdjustMethod = "BH", qvalueCutoff = 0.2, minGSSize = 10,
+                          maxGSSize = 500, readable = FALSE, pool = FALSE)
+write.csv(VCTmarkergoCC@result,'./result/4.富集分析/2.VCT marker/VCTmarker的GO（CC）结果.csv')
+erich2plot(VCTmarkergoCC@result)
+  ##得到7.VCT marker的GO（CC）气泡图-保存pdf
+###4.3.5 VCT的marker进行GO富集分析（biological process）
+VCTmarkergoBP <- enrichGO(VCT.marker.df$SYMBOL, org.Hs.eg.db, keyType = "SYMBOL", ont = "BP",
+                          pvalueCutoff = 0.05, pAdjustMethod = "BH", qvalueCutoff = 0.2, minGSSize = 10,
+                          maxGSSize = 500, readable = FALSE, pool = FALSE)
+write.csv(VCTmarkergoBP@result,'./result/4.富集分析/2.VCT marker/VCTmarker的GO（BP）结果.csv')
+erich2plot(VCTmarkergoBP@result)
+  ##得到8.VCT marker的GO（BP）气泡图-保存pdf
+###4.3.6 EVT的marker进行GSEA分析
+#①KEGG的GSEA分析
+gene <- VCT.marker
+rownames(gene) <- gene[,1]
+gene$SYMBOL <- rownames(gene)
+mygene <- str_trim(gene$SYMBOL,"both")  ##筛选gene，变为list，以下一步转换
+mygene <- bitr(mygene,fromType="SYMBOL",toType=c("ENTREZID","ENSEMBL"),
+               OrgDb = org.Hs.eg.db)
+  ##基因ID转换
+mygene <- dplyr::distinct(mygene,SYMBOL,.keep_all=TRUE)  ##去重
+gene_df <- merge(mygene,gene,by="SYMBOL")
+genelist <- gene_df$avg_log2FC
+names(genelist) <- gene_df$ENTREZID
+geneList <- sort(genelist,decreasing = T)   
+  ##定义基因列表，对logFC进行从高到低排序
+kegg_gmt <- read.gmt("E:/GSEA的GST数据/c2 entrez.gmt")  
+  ##读gmt文件
+KEGG <- GSEA(geneList,TERM2GENE = kegg_gmt)  #GSEA分析
+write.csv(KEGG@result,file = "./result/4.富集分析/2.VCT marker/GSEA/KEGG的GESA结果.csv")
+  ##保存GSEA结果
+dotplot(KEGG,split=".sign")+facet_grid(~.sign) #出点图，并且分面激活和抑制
+dotplot(KEGG,split=".sign")+facet_wrap(~.sign,scales = "free") #换个显示方式
+  ##得到1.KEGG的GSEA结果汇总-保存pdf
+gseaplot2(KEGG,c(1:10),color = "red",pvalue_table = T)  ##按第一个做二维码图，并显示p值
+  ##得到2.KEGG的GSEA结果折线图-保存pdf
+#②GO的GSEA分析
+gene <- VCT.marker
+rownames(gene) <- gene[,1]
+gene$SYMBOL <- rownames(gene)
+mygene <- str_trim(gene$SYMBOL,"both")  ##筛选gene，变为list，以下一步转换
+mygene <- bitr(mygene,fromType="SYMBOL",toType=c("ENTREZID","ENSEMBL"),
+               OrgDb = org.Hs.eg.db)
+##基因ID转换
+mygene <- dplyr::distinct(mygene,SYMBOL,.keep_all=TRUE)  ##去重
+gene_df <- merge(mygene,gene,by="SYMBOL")
+genelist <- gene_df$avg_log2FC
+names(genelist) <- gene_df$ENTREZID
+geneList <- sort(genelist,decreasing = T)   
+  ##定义基因列表，对logFC进行从高到低排序
+kegg_gmt <- read.gmt("E:/GSEA的GST数据/c5 entrez.gmt")  
+  ##读gmt文件
+KEGG <- GSEA(geneList,TERM2GENE = kegg_gmt)  #GSEA分析
+write.csv(KEGG@result,file = "./result/4.富集分析/2.VCT marker/GSEA/GO的GESA结果.csv")
+##保存GSEA结果
+dotplot(KEGG,split=".sign")+facet_grid(~.sign) #出点图，并且分面激活和抑制
+dotplot(KEGG,split=".sign")+facet_wrap(~.sign,scales = "free") #换个显示方式
+  ##得到3.GO的GSEA结果汇总-保存pdf
+gseaplot2(KEGG,c(1:10),color = "red",pvalue_table = T)  ##按第一个做二维码图，并显示p值
+  ##得到4.GO的GSEA结果折线图-保存pdf
+
+
+##4.4 diff_bulk的下游分析
+bulkrich <- diff_bulk %>% top_n(n = -200, wt = p_val_adj) %>% rownames()
+bulkrich[1:10]
+###4.4.1 利用org.Hs.eg.db整合基因名、 ENTREZID、ENSEMBL
+bulkrich.df <- bitr(bulkrich,fromType="SYMBOL",toType=c("ENTREZID","ENSEMBL"),
+                      OrgDb = org.Hs.eg.db) 
+###4.4.2 diff_bulk进行kegg富集分析
+bulkrichkegg <- enrichKEGG(unique(bulkrich.df$ENTREZID), organism='hsa',
+                            pvalueCutoff=0.05,pAdjustMethod='BH',qvalueCutoff=0.2,
+                            minGSSize=10,maxGSSize=500,use_internal_data=F)
+bulkrichkegg <- setReadable(bulkrichkegg,'org.Hs.eg.db','ENTREZID')  ##把ENTREZID转换为SYMBOL
+write.csv(bulkrichkegg@result,'./result/4.富集分析/3.bulk DEGS/bulk DEGs的KEGG结果.csv')
+erich2plot(bulkrichkegg@result)
+  ##得到9.bulk DEGs的KEGG气泡图-保存pdf
+###4.4.3 diff_bulk进行GO富集分析（molecular function）
+bulkrichgoMF <- enrichGO(bulkrich.df$SYMBOL, org.Hs.eg.db, keyType = "SYMBOL", ont = "MF",
+                          pvalueCutoff = 0.05, pAdjustMethod = "BH", qvalueCutoff = 0.2, minGSSize = 10,
+                          maxGSSize = 500, readable = FALSE, pool = FALSE)
+write.csv(bulkrichgoMF@result,"./result/4.富集分析/3.bulk DEGS/bulk DEGs的GO（MF）结果.csv")
+erich2plot(bulkrichgoMF@result)
+  ##得到10.bulk DEGs的GO（MF）气泡图-保存pdf
+###4.4.4 diff_bulk进行GO富集分析（cell component）
+bulkrichgoCC <- enrichGO(bulkrich.df$SYMBOL, org.Hs.eg.db, keyType = "SYMBOL", ont = "CC",
+                          pvalueCutoff = 0.05, pAdjustMethod = "BH", qvalueCutoff = 0.2, minGSSize = 10,
+                          maxGSSize = 500, readable = FALSE, pool = FALSE)
+write.csv(bulkrichgoCC@result,'./result/4.富集分析/3.bulk DEGs/bulk DEGs的GO（CC）结果.csv')
+erich2plot(bulkrichgoCC@result)
+  ##得到11.bulk DEGs的GO（CC）气泡图-保存pdf
+###4.4.5 diff_bulk进行GO富集分析（biological process）
+bulkrichgoBP <- enrichGO(bulkrich.df$SYMBOL, org.Hs.eg.db, keyType = "SYMBOL", ont = "BP",
+                          pvalueCutoff = 0.05, pAdjustMethod = "BH", qvalueCutoff = 0.2, minGSSize = 10,
+                          maxGSSize = 500, readable = FALSE, pool = FALSE)
+write.csv(bulkrichgoBP@result,'./result/4.富集分析/3.bulk DEGs/bulk DEGs的GO（BP）结果.csv')
+erich2plot(bulkrichgoBP@result)
+  ##得到12.bulk DEGs的GO（BP）气泡图-保存pdf
+
+##4.5 diff_trophoblast的下游分析
+trophoblastrich <- diff_trophoblast %>% top_n(n = -200, wt = p_val_adj) %>% rownames()
+trophoblastrich[1:10]
+###4.5.1 利用org.Hs.eg.db整合基因名、 ENTREZID、ENSEMBL
+trophoblastrich.df <- bitr(trophoblastrich,fromType="SYMBOL",toType=c("ENTREZID","ENSEMBL"),
+                    OrgDb = org.Hs.eg.db) 
+###4.5.2 diff_trophoblast进行kegg富集分析
+trophoblastrichkegg <- enrichKEGG(unique(trophoblastrich.df$ENTREZID), organism='hsa',
+                           pvalueCutoff=0.05,pAdjustMethod='BH',qvalueCutoff=0.2,
+                           minGSSize=10,maxGSSize=500,use_internal_data=F)
+trophoblastrichkegg <- setReadable(trophoblastrichkegg,'org.Hs.eg.db','ENTREZID')  ##把ENTREZID转换为SYMBOL
+write.csv(bulkrichkegg@result,'./result/4.富集分析/4.trophoblast DEGS/trophoblast DEGs的KEGG结果.csv')
+erich2plot(trophoblastrichkegg@result)
+  ##得到13.trophoblast DEGs的KEGG气泡图-保存pdf
+###4.5.3 diff_trophoblast进行GO富集分析（molecular function）
+trophoblastrichgoMF <- enrichGO(trophoblastrich.df$SYMBOL, org.Hs.eg.db, keyType = "SYMBOL", ont = "MF",
+                         pvalueCutoff = 0.05, pAdjustMethod = "BH", qvalueCutoff = 0.2, minGSSize = 10,
+                         maxGSSize = 500, readable = FALSE, pool = FALSE)
+write.csv(trophoblastrichgoMF@result,"./result/4.富集分析/4.trophoblast DEGS/trophoblast DEGs的GO（MF）结果.csv")
+erich2plot(trophoblastrichgoMF@result)
+  ##得到14.trophoblast DEGs的GO（MF）气泡图-保存pdf
+###4.5.4 diff_trophoblast进行GO富集分析（cell component）
+trophoblastrichgoCC <- enrichGO(trophoblastrich.df$SYMBOL, org.Hs.eg.db, keyType = "SYMBOL", ont = "CC",
+                         pvalueCutoff = 0.05, pAdjustMethod = "BH", qvalueCutoff = 0.2, minGSSize = 10,
+                         maxGSSize = 500, readable = FALSE, pool = FALSE)
+write.csv(trophoblastrichgoCC@result,'./result/4.富集分析/4.trophoblast DEGs/trophoblast DEGs的GO（CC）结果.csv')
+erich2plot(trophoblastrichgoCC@result)
+  ##得到15.trophoblast DEGs的GO（CC）气泡图-保存pdf
+###4.5.5 diff_trophoblast进行GO富集分析（biological process）
+trophoblastrichgoBP <- enrichGO(trophoblastrich.df$SYMBOL, org.Hs.eg.db, keyType = "SYMBOL", ont = "BP",
+                         pvalueCutoff = 0.05, pAdjustMethod = "BH", qvalueCutoff = 0.2, minGSSize = 10,
+                         maxGSSize = 500, readable = FALSE, pool = FALSE)
+write.csv(trophoblastrichgoBP@result,'./result/4.富集分析/4.trophoblast DEGs/trophoblast DEGs的GO（BP）结果.csv')
+erich2plot(trophoblastrichgoBP@result)
+  ##得到16.trophoblast DEGs的GO（BP）气泡图-保存pdf
+
+##4.6 diff_EVT的下游分析
+EVTrich <- diff_EVT %>% top_n(n = -200, wt = p_val_adj) %>% rownames()
+EVTrich[1:10]
+###4.6.1 利用org.Hs.eg.db整合基因名、 ENTREZID、ENSEMBL
+EVTrich.df <- bitr(EVTrich,fromType="SYMBOL",toType=c("ENTREZID","ENSEMBL"),
+                           OrgDb = org.Hs.eg.db) 
+###4.6.2 diff_trophoblast进行kegg富集分析
+EVTrichkegg <- enrichKEGG(unique(EVTrich.df$ENTREZID), organism='hsa',
+                                  pvalueCutoff=0.05,pAdjustMethod='BH',qvalueCutoff=0.2,
+                                  minGSSize=10,maxGSSize=500,use_internal_data=F)
+EVTrichkegg <- setReadable(EVTrichkegg,'org.Hs.eg.db','ENTREZID')  ##把ENTREZID转换为SYMBOL
+write.csv(EVTrichkegg@result,'./result/4.富集分析/5.EVT DEGS/EVT DEGs的KEGG结果.csv')
+erich2plot(EVTrichkegg@result)
+  ##得到17.EVT DEGs的KEGG气泡图-保存pdf
+###4.6.3 diff_EVT进行GO富集分析（molecular function）
+EVTrichgoMF <- enrichGO(EVTrich.df$SYMBOL, org.Hs.eg.db, keyType = "SYMBOL", ont = "MF",
+                                pvalueCutoff = 0.05, pAdjustMethod = "BH", qvalueCutoff = 0.2, minGSSize = 10,
+                                maxGSSize = 500, readable = FALSE, pool = FALSE)
+write.csv(EVTrichgoMF@result,"./result/4.富集分析/5.EVT DEGS/EVT DEGs的GO（MF）结果.csv")
+erich2plot(EVTrichgoMF@result)
+  ##得到18.EVT DEGs的GO（MF）气泡图-保存pdf
+###4.6.4 diff_EVT进行GO富集分析（cell component）
+EVTrichgoCC <- enrichGO(EVTrich.df$SYMBOL, org.Hs.eg.db, keyType = "SYMBOL", ont = "CC",
+                                pvalueCutoff = 0.05, pAdjustMethod = "BH", qvalueCutoff = 0.2, minGSSize = 10,
+                                maxGSSize = 500, readable = FALSE, pool = FALSE)
+write.csv(EVTrichgoCC@result,'./result/4.富集分析/5.EVT DEGs/EVT DEGs的GO（CC）结果.csv')
+erich2plot(EVTrichgoCC@result)
+  ##得到19.EVT DEGs的GO（CC）气泡图-保存pdf
+###4.6.5 diff_EVT进行GO富集分析（biological process）
+EVTrichgoBP <- enrichGO(EVTrich.df$SYMBOL, org.Hs.eg.db, keyType = "SYMBOL", ont = "BP",
+                                pvalueCutoff = 0.05, pAdjustMethod = "BH", qvalueCutoff = 0.2, minGSSize = 10,
+                                maxGSSize = 500, readable = FALSE, pool = FALSE)
+write.csv(EVTrichgoBP@result,'./result/4.富集分析/5.EVT DEGs/EVT DEGs的GO（BP）结果.csv')
+erich2plot(EVTrichgoBP@result)
+  ##得到20.EVT DEGs的GO（BP）气泡图-保存pdf
+
+##4.7 diff_VCT的下游分析
+VCTrich <- diff_VCT %>% top_n(n = -200, wt = p_val_adj) %>% rownames()
+VCTrich[1:10]
+###4.7.1 利用org.Hs.eg.db整合基因名、 ENTREZID、ENSEMBL
+VCTrich.df <- bitr(VCTrich,fromType="SYMBOL",toType=c("ENTREZID","ENSEMBL"),
+                   OrgDb = org.Hs.eg.db) 
+###4.7.2 diff_VCT进行kegg富集分析
+VCTrichkegg <- enrichKEGG(unique(VCTrich.df$ENTREZID), organism='hsa',
+                          pvalueCutoff=0.05,pAdjustMethod='BH',qvalueCutoff=0.2,
+                          minGSSize=10,maxGSSize=500,use_internal_data=F)
+VCTrichkegg <- setReadable(VCTrichkegg,'org.Hs.eg.db','ENTREZID')  ##把ENTREZID转换为SYMBOL
+write.csv(VCTrichkegg@result,'./result/4.富集分析/6.VCT DEGS/VCT DEGs的KEGG结果.csv')
+erich2plot(VCTrichkegg@result)
+  ##得到21.VCT DEGs的KEGG气泡图-保存pdf
+###4.7.3 diff_VCT进行GO富集分析（molecular function）
+VCTrichgoMF <- enrichGO(VCTrich.df$SYMBOL, org.Hs.eg.db, keyType = "SYMBOL", ont = "MF",
+                        pvalueCutoff = 0.05, pAdjustMethod = "BH", qvalueCutoff = 0.2, minGSSize = 10,
+                        maxGSSize = 500, readable = FALSE, pool = FALSE)
+write.csv(VCTrichgoMF@result,"./result/4.富集分析/6.VCT DEGS/VCT DEGs的GO（MF）结果.csv")
+erich2plot(VCTrichgoMF@result)
+  ##得到22.VCT DEGs的GO（MF）气泡图-保存pdf
+###4.7.4 diff_VCT进行GO富集分析（cell component）
+VCTrichgoCC <- enrichGO(VCTrich.df$SYMBOL, org.Hs.eg.db, keyType = "SYMBOL", ont = "CC",
+                        pvalueCutoff = 0.05, pAdjustMethod = "BH", qvalueCutoff = 0.2, minGSSize = 10,
+                        maxGSSize = 500, readable = FALSE, pool = FALSE)
+write.csv(VCTrichgoCC@result,'./result/4.富集分析/6.VCT DEGs/VCT DEGs的GO（CC）结果.csv')
+erich2plot(VCTrichgoCC@result)
+  ##得到23.VCT DEGs的GO（CC）气泡图-保存pdf
+###4.7.5 diff_VCT进行GO富集分析（biological process）
+VCTrichgoBP <- enrichGO(VCTrich.df$SYMBOL, org.Hs.eg.db, keyType = "SYMBOL", ont = "BP",
+                        pvalueCutoff = 0.05, pAdjustMethod = "BH", qvalueCutoff = 0.2, minGSSize = 10,
+                        maxGSSize = 500, readable = FALSE, pool = FALSE)
+write.csv(VCTrichgoBP@result,'./result/4.富集分析/6.VCT DEGs/VCT DEGs的GO（BP）结果.csv')
+erich2plot(VCTrichgoBP@result)
+  ##得到24.VCT DEGs的GO（BP）气泡图-保存pdf
+
+##4.8 diff_SCT的下游分析
+SCTrich <- diff_SCT %>% top_n(n = -200, wt = p_val_adj) %>% rownames()
+SCTrich[1:10]
+###4.8.1 利用org.Hs.eg.db整合基因名、 ENTREZID、ENSEMBL
+SCTrich.df <- bitr(SCTrich,fromType="SYMBOL",toType=c("ENTREZID","ENSEMBL"),
+                   OrgDb = org.Hs.eg.db) 
+###4.8.2 diff_SCT进行kegg富集分析
+SCTrichkegg <- enrichKEGG(unique(SCTrich.df$ENTREZID), organism='hsa',
+                          pvalueCutoff=0.05,pAdjustMethod='BH',qvalueCutoff=0.2,
+                          minGSSize=10,maxGSSize=500,use_internal_data=F)
+SCTrichkegg <- setReadable(SCTrichkegg,'org.Hs.eg.db','ENTREZID')  ##把ENTREZID转换为SYMBOL
+write.csv(SCTrichkegg@result,'./result/4.富集分析/7.SCT DEGS/SCT DEGs的KEGG结果.csv')
+erich2plot(SCTrichkegg@result)
+  ##得到25.SCT DEGs的KEGG气泡图-保存pdf
+###4.8.3 diff_SCT进行GO富集分析（molecular function）
+SCTrichgoMF <- enrichGO(SCTrich.df$SYMBOL, org.Hs.eg.db, keyType = "SYMBOL", ont = "MF",
+                        pvalueCutoff = 0.05, pAdjustMethod = "BH", qvalueCutoff = 0.2, minGSSize = 10,
+                        maxGSSize = 500, readable = FALSE, pool = FALSE)
+write.csv(SCTrichgoMF@result,"./result/4.富集分析/7.SCT DEGS/SCT DEGs的GO（MF）结果.csv")
+erich2plot(SCTrichgoMF@result)
+  ##得到26.SCT DEGs的GO（MF）气泡图-保存pdf
+###4.8.4 diff_SCT进行GO富集分析（cell component）
+SCTrichgoCC <- enrichGO(SCTrich.df$SYMBOL, org.Hs.eg.db, keyType = "SYMBOL", ont = "CC",
+                        pvalueCutoff = 0.05, pAdjustMethod = "BH", qvalueCutoff = 0.2, minGSSize = 10,
+                        maxGSSize = 500, readable = FALSE, pool = FALSE)
+write.csv(SCTrichgoCC@result,'./result/4.富集分析/7.SCT DEGs/SCT DEGs的GO（CC）结果.csv')
+erich2plot(SCTrichgoCC@result)
+  ##得到27.SCT DEGs的GO（CC）气泡图-保存pdf
+###4.8.5 diff_SCT进行GO富集分析（biological process）
+SCTrichgoBP <- enrichGO(SCTrich.df$SYMBOL, org.Hs.eg.db, keyType = "SYMBOL", ont = "BP",
+                        pvalueCutoff = 0.05, pAdjustMethod = "BH", qvalueCutoff = 0.2, minGSSize = 10,
+                        maxGSSize = 500, readable = FALSE, pool = FALSE)
+write.csv(SCTrichgoBP@result,'./result/4.富集分析/7.SCT DEGs/SCT DEGs的GO（BP）结果.csv')
+erich2plot(SCTrichgoBP@result)
+  ##得到28.SCT DEGs的GO（BP）气泡图-保存pdf
+
+##4.9 精简工作环境并保存
+save.image(file = "./Rdata/富集分析.Rdata")
+
+#5.CellChat
+##5.1 载入数据
+rm(list = ls())
+chatdata <- readRDS("./Rdata/细胞注释后的数据.rds")
+class(chatdata)
+##数据类型是SeuratObject
+data.input <- chatdata[["RNA"]]@data  ##要求的数据是normalized data matrix
+  ##如果是seurat文件则$前为：pbmc[["RNA"]]@data
+meta <- chatdata@meta.data
+unique(meta$group)  ##查看数据中的分组
+
+##5.2 提取数据，先构建control的cellchat对象
+cell.use <- rownames(meta)[meta$group == "control"]   
+  ##只提取control的细胞
+data.input <- data.input[, cell.use]
+meta = meta[cell.use, ]   
+###5.2.1 取出control细胞的meta信息
+unique(meta$celltype)  ##celltype为细胞类型
+cellchat <- createCellChat(object = data.input, meta = meta, group.by = "celltype")
+  ##创建celllchat对象，group.by依据目的确定
+cellchat <- addMeta(cellchat, meta = meta)  ##添加meta
+cellchat <- setIdent(cellchat, ident.use = "celltype")  
+  ##设置celltype为cell identity，后续分析显示的就是各celltype之间的通讯
+levels(cellchat@idents)  ##显示作为idents的细胞类型
+groupSize <- as.numeric(table(cellchat@idents))  ##显示各组的细胞数目
+groupSize
+###5.2.2 载入数据库进行计算
+CellChatDB <- CellChatDB.human  ##CellChatDB.mouse用于小鼠
+showDatabaseCategory(CellChatDB)  ##展示数据库的基本组成
+dplyr::glimpse(CellChatDB$interaction) ##展示数据库内互作的记录
+CellChatDB.use <- subsetDB(CellChatDB, search = "Secreted Signaling")
+##取出数据库内的Secreted Signaling用作分析数据库
+##对应物种都有Secreted Signaling, ECM-Receptor, 和Cell-Cell Contact三种interaction database
+##Secreted Signaling：旁分泌/自分泌，ECM-Receptor：细胞外基质，Cell-Cell Contact：细胞-细胞接触相互作用
+cellchat@DB <- CellChatDB.use  ##将数据库内容载入cellchat对象中
+###5.2.3表达量预处理
+cellchat <- subsetData(cellchat,features = NULL)  
+  ##取出表达数据，features可以填入感兴趣的基因
+cellchat <- identifyOverExpressedGenes(cellchat) 
+  ##寻找高表达的基因
+cellchat <- identifyOverExpressedInteractions(cellchat) 
+  ##寻找高表达的通路
+cellchat <- projectData(cellchat, PPI.human) 
+  ##投影到PPI
+cellchat <- computeCommunProb(cellchat, raw.use = F)
+  ##raw.use = T默认用RNA数据计算，raw.use = F用蛋白质计算
+  ##默认计算方式为type = "truncatedMean"
+?computeCommunProb
+  ##默认cutoff的值为20%，即表达比例在25%以下的基因会被认为是0， trim = 0.1可以调整比例阈值
+cellchat <- filterCommunication(cellchat, min.cells = 10)
+##去掉通讯数量很少的细胞
+df.net <- subsetCommunication(cellchat)
+write.csv(df.net,"./result/5.CellChat/control组CellChat结果（内、旁分泌）.csv")
+  ##将细胞通讯预测结果以数据框的形式取出
+  ##1.只取通路，数据结构更简单:df.net <- subsetCommunication(cellchat,slot.name = "netP")
+  ##2指定输入与输出的细胞集群:df.net <- subsetCommunication(cellchat, sources.use = c(1,2), targets.use = c(4,5))
+  ##3.指定通路提取:df.net <- subsetCommunication(cellchat, signaling = c("WNT", "TGFb"))
+cellchat <- computeCommunProbPathway(cellchat)
+  ##每对配受体的预测结果存在net中，每条通路的预测结果存在netp中
+cellchat <- aggregateNet(cellchat)
+  ##计算联路数与通讯概率，可用sources.use and targets.use指定来源与去向
+###5.3.3可视化
+par(mfrow = c(1,3), xpd=TRUE)
+##定义一个1行3列图片的图片区
+netVisual_circle(cellchat@net$count, vertex.weight = groupSize, weight.scale = T,
+                 label.edge= F, title.name = "Number of interactions")
+  ##Number of interactions展示互作数目
+netVisual_circle(cellchat@net$weight, vertex.weight = groupSize, weight.scale = T, 
+                 label.edge= F, title.name = "Interaction weights/strength")
+  ##Interaction weights/strength展示互作权重
+netVisual_circle(cellchat@net$weight, vertex.weight = groupSize, weight.scale = T, 
+                 label.edge= F, title.name = "Interaction weights/strength")
+  ##targets.use仅展示特定的通路
+  ##得到1.control组各类细胞间相互作用图（内、旁分泌）-保存图片（1500*1000）
+mat <- cellchat@net$weight
+par(mfrow = c(3,4), xpd=TRUE)
+  ##定义一个3行4列图片的图片区
+for (i in 1:nrow(mat)) {
+  mat2 <- matrix(0, nrow = nrow(mat), ncol = ncol(mat), dimnames = dimnames(mat))
+  mat2[i, ] <- mat[i, ]
+  netVisual_circle(mat2, vertex.weight = groupSize, weight.scale = T, 
+                   edge.weight.max = max(mat), title.name = rownames(mat)[i])
+}
+  ##得到2.control组各类细胞与其他细胞相互作用图（内、旁分泌）-保存图片（1500*1000）
+###5.2.4 保存供合并用
+saveRDS(cellchat,"./Rdata/cellchat（control）.rds")
+
+##5.3 提取数据，再构建PE的cellchat对象
+rm(list = ls())
+chatdata <- readRDS("./Rdata/细胞注释后的数据.rds")
+class(chatdata)
+##数据类型是SeuratObject
+data.input <- chatdata[["RNA"]]@data  ##要求的数据是normalized data matrix
+##如果是seurat文件则$前为：pbmc[["RNA"]]@data
+meta <- chatdata@meta.data
+unique(meta$group)  ##查看数据中的分组
+cell.use <- rownames(meta)[meta$group == "PE"]   
+##只提取PE的细胞
+data.input <- data.input[, cell.use]
+meta = meta[cell.use, ]   
+###5.3.1 取出control细胞的meta信息
+unique(meta$celltype)  ##celltype为细胞类型
+cellchat <- createCellChat(object = data.input, meta = meta, group.by = "celltype")
+##创建celllchat对象，group.by依据目的确定
+cellchat <- addMeta(cellchat, meta = meta)  ##添加meta
+cellchat <- setIdent(cellchat, ident.use = "celltype")  
+##设置celltype为cell identity，后续分析显示的就是各celltype之间的通讯
+levels(cellchat@idents)  ##显示作为idents的细胞类型
+groupSize <- as.numeric(table(cellchat@idents))  ##显示各组的细胞数目
+groupSize
+###5.3.2 载入数据库进行计算
+CellChatDB <- CellChatDB.human  ##CellChatDB.mouse用于小鼠
+showDatabaseCategory(CellChatDB)  ##展示数据库的基本组成
+dplyr::glimpse(CellChatDB$interaction) ##展示数据库内互作的记录
+CellChatDB.use <- subsetDB(CellChatDB, search = "Secreted Signaling")
+##取出数据库内的Secreted Signaling用作分析数据库
+##对应物种都有Secreted Signaling, ECM-Receptor, 和Cell-Cell Contact三种interaction database
+##Secreted Signaling：旁分泌/自分泌，ECM-Receptor：细胞外基质，Cell-Cell Contact：细胞-细胞接触相互作用
+cellchat@DB <- CellChatDB.use  ##将数据库内容载入cellchat对象中
+###5.3.3表达量预处理
+cellchat <- subsetData(cellchat,features = NULL)  
+##取出表达数据，features可以填入感兴趣的基因
+cellchat <- identifyOverExpressedGenes(cellchat) 
+##寻找高表达的基因
+cellchat <- identifyOverExpressedInteractions(cellchat) 
+##寻找高表达的通路
+cellchat <- projectData(cellchat, PPI.human) 
+##投影到PPI
+cellchat <- computeCommunProb(cellchat, raw.use = F)
+##raw.use = T默认用RNA数据计算，raw.use = F用蛋白质计算
+##默认计算方式为type = "truncatedMean"
+?computeCommunProb
+##默认cutoff的值为20%，即表达比例在25%以下的基因会被认为是0， trim = 0.1可以调整比例阈值
+cellchat <- filterCommunication(cellchat, min.cells = 10)
+##去掉通讯数量很少的细胞
+df.net <- subsetCommunication(cellchat)
+write.csv(df.net,"./result/5.CellChat/PE组CellChat结果（内、旁分泌）.csv")
+##将细胞通讯预测结果以数据框的形式取出
+##1.只取通路，数据结构更简单:df.net <- subsetCommunication(cellchat,slot.name = "netP")
+##2指定输入与输出的细胞集群:df.net <- subsetCommunication(cellchat, sources.use = c(1,2), targets.use = c(4,5))
+##3.指定通路提取:df.net <- subsetCommunication(cellchat, signaling = c("WNT", "TGFb"))
+cellchat <- computeCommunProbPathway(cellchat)
+##每对配受体的预测结果存在net中，每条通路的预测结果存在netp中
+cellchat <- aggregateNet(cellchat)
+##计算联路数与通讯概率，可用sources.use and targets.use指定来源与去向
+###5.3.4可视化
+par(mfrow = c(1,3), xpd=TRUE)
+##定义一个1行3列图片的图片区
+netVisual_circle(cellchat@net$count, vertex.weight = groupSize, weight.scale = T,
+                 label.edge= F, title.name = "Number of interactions")
+##Number of interactions展示互作数目
+netVisual_circle(cellchat@net$weight, vertex.weight = groupSize, weight.scale = T, 
+                 label.edge= F, title.name = "Interaction weights/strength")
+##Interaction weights/strength展示互作权重
+netVisual_circle(cellchat@net$weight, vertex.weight = groupSize, weight.scale = T, 
+                 label.edge= F, title.name = "Interaction weights/strength")
+##targets.use仅展示特定的通路
+##得到3.PE组各类细胞间相互作用图（内、旁分泌）-保存图片（1500*1000）
+mat <- cellchat@net$weight
+par(mfrow = c(3,4), xpd=TRUE)
+##定义一个3行4列图片的图片区
+for (i in 1:nrow(mat)) {
+  mat2 <- matrix(0, nrow = nrow(mat), ncol = ncol(mat), dimnames = dimnames(mat))
+  mat2[i, ] <- mat[i, ]
+  netVisual_circle(mat2, vertex.weight = groupSize, weight.scale = T, 
+                   edge.weight.max = max(mat), title.name = rownames(mat)[i])
+}
+##得到4.PE组各类细胞与其他细胞相互作用图（内、旁分泌）-保存图片（1500*1000）
+###5.3.5 保存供合并用
+saveRDS(cellchat,"./Rdata/cellchat（PE）.rds")
+
+##5.4 合并control、PE数据
+###5.4.1 载入数据
+rm(list = ls())
+cellchat.control <- readRDS('./Rdata/cellchat（control）.rds')
+cellchat.control <- netAnalysis_computeCentrality(cellchat.control, slot.name = "netP")
+cellchat.PE <- readRDS('./Rdata/cellchat（PE）.rds')
+cellchat.PE <- netAnalysis_computeCentrality(cellchat.PE, slot.name = "netP")
+object.list <- list(control = cellchat.control, PE = cellchat.PE)
+cellchat <- mergeCellChat(object.list, add.names = names(object.list),cell.prefix=TRUE)
+###5.4.2 查看细胞互作的数量和强度
+gg1 <- compareInteractions(cellchat, show.legend = FALSE, group = c(1,2))
+gg2 <- compareInteractions(cellchat, show.legend = FALSE, group = c(1,2), measure = "weight")
+gg1 + gg2
+  ##得到5.细胞互作的数量和强度-保存pdf
+###5.4.3 查看细胞通路在两组间的富集程度
+gg3 <- rankNet(cellchat, mode = "comparison", stacked = T, do.stat = TRUE)
+gg4 <- rankNet(cellchat, mode = "comparison", stacked = F, do.stat = TRUE)
+gg3 + gg4
+  ##得到6.组间细胞通路富集程度-保存pdf
+###5.4.4 以circle plot的形式展示第二个组别中相较于第一个组别细胞通讯发生的变化，红色为上调蓝色为下调
+par(mfrow = c(1,2), xpd=TRUE)
+  ##定义一个1行2列图片的图片区
+#①直接展示二组“相减”的结果
+netVisual_diffInteraction(cellchat, weight.scale = T)
+netVisual_diffInteraction(cellchat, weight.scale = T, measure = "weight")
+  ##得到PE组减去control组的富集结果相减图-保存图片（1500*1000）
+#②将两组分开展示
+weight.max <- getMaxWeight(object.list, attribute = c("idents","count"))
+par(mfrow = c(1,2), xpd=TRUE)
+for (i in 1:length(object.list)) {
+  netVisual_circle(object.list[[i]]@net$count, weight.scale = T, label.edge= F, edge.weight.max = weight.max[2], edge.width.max = 12, title.name = paste0("Number of interactions - ", names(object.list)[i]))
+}
+  ##得到PE组减去control组的富集结果相减图（分组）-保存图片（1500*1000）
+##5.4.5 以热图的形式展示第二个组别中相较于第一个组别细胞通讯发生的变化
+gg5 <- netVisual_heatmap(cellchat)
+gg6 <- netVisual_heatmap(cellchat, measure = "weight")
+gg5 + gg6
+  ##得到8.PE组减去control组的富集结果相减图（热图）-保存pdf
