@@ -1,0 +1,654 @@
+rm(list = ls())
+setwd("D:/2023.10/PE scRNA（GSE173193）/运行")
+getwd()
+
+#打开必要的package
+if(!require(tidyverse))install.packages("tidyverse")
+if(!require(ggsankey))devtools::install_github("davidsjoberg/ggsankey")
+if(!require(ggplot2))install.packages("ggplot2")
+if(!require(cols4all))install.packages("cols4all")
+if(!require(dittoSeq))BiocManager::install("dittoSeq")
+
+#EVT marker的KEGG的桑吉图
+{
+  KEGG_df1 <- read.csv("./other_data/富集分析/1.EVTmarker（可视化）/EVTmarker的KEGG结果（桑吉图用）.csv", header = T)
+KEGG_df1_trans <- KEGG_df1 %>%make_long(gene, pathway)
+KEGG_df1_trans$node <- factor(KEGG_df1_trans$node,levels = c(KEGG_df1$pathway %>% unique()%>% rev(),
+                                                             KEGG_df1$gene %>% unique() %>% rev()))
+ggplot(KEGG_df1_trans, aes(x = x,
+                      next_x= next_x,
+                      node= node,
+                      next_node= next_node,
+                      fill= node,
+                      label= node)) +
+  geom_sankey(flow.fill="#DFDFDF",
+              flow.color="grey60",
+              node.fill=dittoColors()[1:82],
+              width=0.15) + 
+  geom_sankey_text(size = 3,
+                   color= "black",
+                   hjust=1) + 
+  theme_void()
+  ##得到5.EVT marker的KEGG桑吉图-保存pdf
+}
+
+#EVT marker的GO（MF）的桑吉图
+{
+  GOMF_df1 <- read.csv("./other_data/富集分析/1.EVTmarker（可视化）/EVTmarker的GO（MF）结果（桑吉图用）.csv", header = T)
+GOMF_df1_trans <- GOMF_df1 %>%make_long(gene, pathway)
+GOMF_df1_trans$node <- factor(GOMF_df1_trans$node,levels = c(GOMF_df1$pathway %>% unique()%>% rev(),
+                                                             GOMF_df1$gene %>% unique() %>% rev()))
+ggplot(GOMF_df1_trans, aes(x = x,
+                           next_x= next_x,
+                           node= node,
+                           next_node= next_node,
+                           fill= node,
+                           label= node)) +
+  geom_sankey(flow.fill="#DFDFDF",
+              flow.color="grey60",
+              node.fill=dittoColors()[1:106],
+              width=0.15) + 
+  geom_sankey_text(size = 3,
+                   color= "black",
+                   hjust=1) + 
+  theme_void()
+  ##得到6.EVT marker的GO（MF）桑吉图-保存pdf
+}
+
+#EVT marker的GO（CC）的桑吉图
+{
+  GOCC_df1 <- read.csv("./other_data/富集分析/1.EVTmarker（可视化）/EVTmarker的GO（CC）结果（桑吉图用）.csv", header = T)
+GOCC_df1_trans <- GOCC_df1 %>%make_long(gene, pathway)
+GOCC_df1_trans$node <- factor(GOCC_df1_trans$node,levels = c(GOCC_df1$pathway %>% unique()%>% rev(),
+                                                             GOCC_df1$gene %>% unique() %>% rev()))
+ggplot(GOCC_df1_trans, aes(x = x,
+                           next_x= next_x,
+                           node= node,
+                           next_node= next_node,
+                           fill= node,
+                           label= node)) +
+  geom_sankey(flow.fill="#DFDFDF",
+              flow.color="grey60",
+              node.fill=dittoColors()[1:108],
+              width=0.15) + 
+  geom_sankey_text(size = 3,
+                   color= "black",
+                   hjust=1) + 
+  theme_void()
+  ##得到7.EVT marker的GO（CC）桑吉图-保存pdf
+}
+
+#EVT marker的GO（BP）的桑吉图
+{
+  GOBP_df1 <- read.csv("./other_data/富集分析/1.EVTmarker（可视化）/EVTmarker的GO（BP）结果（桑吉图用）.csv", header = T)
+GOBP_df1_trans <- GOBP_df1 %>%make_long(gene, pathway)
+GOBP_df1_trans$node <- factor(GOBP_df1_trans$node,levels = c(GOBP_df1$pathway %>% unique()%>% rev(),
+                                                             GOBP_df1$gene %>% unique() %>% rev()))
+ggplot(GOBP_df1_trans, aes(x = x,
+                           next_x= next_x,
+                           node= node,
+                           next_node= next_node,
+                           fill= node,
+                           label= node)) +
+  geom_sankey(flow.fill="#DFDFDF",
+              flow.color="grey60",
+              node.fill=dittoColors()[1:122],
+              width=0.15) + 
+  geom_sankey_text(size = 3,
+                   color= "black",
+                   hjust=1) + 
+  theme_void()
+  ##得到8.EVT marker的GO（BP）桑吉图-保存pdf
+}
+
+#VCT marker的KEGG的桑吉图
+{
+  KEGG_df1 <- read.csv("./other_data/富集分析/2.VCTmarker（可视化）/VCTmarker的KEGG结果 （桑吉图用）.csv", header = T)
+KEGG_df1_trans <- KEGG_df1 %>%make_long(gene, pathway)
+KEGG_df1_trans$node <- factor(KEGG_df1_trans$node,levels = c(KEGG_df1$pathway %>% unique()%>% rev(),
+                                                             KEGG_df1$gene %>% unique() %>% rev()))
+ggplot(KEGG_df1_trans, aes(x = x,
+                           next_x= next_x,
+                           node= node,
+                           next_node= next_node,
+                           fill= node,
+                           label= node)) +
+  geom_sankey(flow.fill="#DFDFDF",
+              flow.color="grey60",
+              node.fill=dittoColors()[1:29],
+              width=0.15) + 
+  geom_sankey_text(size = 3,
+                   color= "black",
+                   hjust=1) + 
+  theme_void()
+  ##得到5.VCT marker的KEGG桑吉图-保存pdf
+}
+
+#VCT marker的GO（MF）的桑吉图
+{
+  GOMF_df1 <- read.csv("./other_data/富集分析/2.VCTmarker（可视化）/VCTmarker的GO（MF）结果（桑吉图用）.csv", header = T)
+GOMF_df1_trans <- GOMF_df1 %>%make_long(gene, pathway)
+GOMF_df1_trans$node <- factor(GOMF_df1_trans$node,levels = c(GOMF_df1$pathway %>% unique()%>% rev(),
+                                                             GOMF_df1$gene %>% unique() %>% rev()))
+ggplot(GOMF_df1_trans, aes(x = x,
+                           next_x= next_x,
+                           node= node,
+                           next_node= next_node,
+                           fill= node,
+                           label= node)) +
+  geom_sankey(flow.fill="#DFDFDF",
+              flow.color="grey60",
+              node.fill=dittoColors()[1:42],
+              width=0.15) + 
+  geom_sankey_text(size = 3,
+                   color= "black",
+                   hjust=1) + 
+  theme_void()
+  ##得到6.VCT marker的GO（MF）桑吉图-保存pdf
+}
+
+#VCT marker的GO（CC）的桑吉图
+{
+  GOCC_df1 <- read.csv("./other_data/富集分析/2.VCTmarker（可视化）/VCTmarker的GO（CC）结果（桑吉图用） .csv", header = T)
+GOCC_df1_trans <- GOCC_df1 %>%make_long(gene, pathway)
+GOCC_df1_trans$node <- factor(GOCC_df1_trans$node,levels = c(GOCC_df1$pathway %>% unique()%>% rev(),
+                                                             GOCC_df1$gene %>% unique() %>% rev()))
+ggplot(GOCC_df1_trans, aes(x = x,
+                           next_x= next_x,
+                           node= node,
+                           next_node= next_node,
+                           fill= node,
+                           label= node)) +
+  geom_sankey(flow.fill="#DFDFDF",
+              flow.color="grey60",
+              node.fill=dittoColors()[1:39],
+              width=0.15) + 
+  geom_sankey_text(size = 3,
+                   color= "black",
+                   hjust=1) + 
+  theme_void()
+##得到7.VCT marker的GO（CC）桑吉图-保存pdf
+}
+
+#VCT marker的GO（BP）的桑吉图
+{
+  GOBP_df1 <- read.csv("./other_data/富集分析/2.VCTmarker（可视化）/VCTmarker的GO（BP）结果（桑吉图用）.csv", header = T)
+GOBP_df1_trans <- GOBP_df1 %>%make_long(gene, pathway)
+GOBP_df1_trans$node <- factor(GOBP_df1_trans$node,levels = c(GOBP_df1$pathway %>% unique()%>% rev(),
+                                                             GOBP_df1$gene %>% unique() %>% rev()))
+ggplot(GOBP_df1_trans, aes(x = x,
+                           next_x= next_x,
+                           node= node,
+                           next_node= next_node,
+                           fill= node,
+                           label= node)) +
+  geom_sankey(flow.fill="#DFDFDF",
+              flow.color="grey60",
+              node.fill=dittoColors()[1:42],
+              width=0.15) + 
+  geom_sankey_text(size = 3,
+                   color= "black",
+                   hjust=1) + 
+  theme_void()
+##得到8.VCT marker的GO（BP）桑吉图-保存pdf
+}
+
+#全部细胞DEGs的KEGG的桑吉图
+{
+  KEGG_df1 <- read.csv("./other_data/富集分析/3.bulk DEGs（可视化）/bulk DEGs的KEGG结果（桑吉图用）.csv", header = T)
+  KEGG_df1_trans <- KEGG_df1 %>%make_long(gene, pathway)
+  KEGG_df1_trans$node <- factor(KEGG_df1_trans$node,levels = c(KEGG_df1$pathway %>% unique()%>% rev(),
+                                                               KEGG_df1$gene %>% unique() %>% rev()))
+  ggplot(KEGG_df1_trans, aes(x = x,
+                             next_x= next_x,
+                             node= node,
+                             next_node= next_node,
+                             fill= node,
+                             label= node)) +
+    geom_sankey(flow.fill="#DFDFDF",
+                flow.color="grey60",
+                node.fill=dittoColors()[1:70],
+                width=0.15) + 
+    geom_sankey_text(size = 3,
+                     color= "black",
+                     hjust=1) + 
+    theme_void()
+  ##得到5.全部细胞DEGs的KEGG桑吉图-保存pdf
+}
+
+#全部细胞DEGs的GO（MF）的桑吉图
+{
+  GOMF_df1 <- read.csv("./other_data/富集分析/3.bulk DEGs（可视化）/bulk DEGs的GO（MF）结果（桑吉图用）.csv", header = T)
+  GOMF_df1_trans <- GOMF_df1 %>%make_long(gene, pathway)
+  GOMF_df1_trans$node <- factor(GOMF_df1_trans$node,levels = c(GOMF_df1$pathway %>% unique()%>% rev(),
+                                                               GOMF_df1$gene %>% unique() %>% rev()))
+  ggplot(GOMF_df1_trans, aes(x = x,
+                             next_x= next_x,
+                             node= node,
+                             next_node= next_node,
+                             fill= node,
+                             label= node)) +
+    geom_sankey(flow.fill="#DFDFDF",
+                flow.color="grey60",
+                node.fill=dittoColors()[1:83],
+                width=0.15) + 
+    geom_sankey_text(size = 3,
+                     color= "black",
+                     hjust=1) + 
+    theme_void()
+  ##得到6.全部细胞DEGs的GO（MF）桑吉图-保存pdf
+}
+
+#全部细胞DEGs的GO（CC）的桑吉图
+{
+  GOCC_df1 <- read.csv("./other_data/富集分析/3.bulk DEGs（可视化）/bulk DEGs的GO（CC）结果（桑吉图用） .csv", header = T)
+  GOCC_df1_trans <- GOCC_df1 %>%make_long(gene, pathway)
+  GOCC_df1_trans$node <- factor(GOCC_df1_trans$node,levels = c(GOCC_df1$pathway %>% unique()%>% rev(),
+                                                               GOCC_df1$gene %>% unique() %>% rev()))
+  ggplot(GOCC_df1_trans, aes(x = x,
+                             next_x= next_x,
+                             node= node,
+                             next_node= next_node,
+                             fill= node,
+                             label= node)) +
+    geom_sankey(flow.fill="#DFDFDF",
+                flow.color="grey60",
+                node.fill=dittoColors()[1:78],
+                width=0.15) + 
+    geom_sankey_text(size = 3,
+                     color= "black",
+                     hjust=1) + 
+    theme_void()
+  ##得到7.全部细胞DEGs的GO（CC）桑吉图-保存pdf
+}
+
+#全部细胞DEGs的GO（BP）的桑吉图
+{
+  GOBP_df1 <- read.csv("./other_data/富集分析/3.bulk DEGs（可视化）/bulk DEGs的GO（BP）结果（桑吉图用） .csv", header = T)
+  GOBP_df1_trans <- GOBP_df1 %>%make_long(gene, pathway)
+  GOBP_df1_trans$node <- factor(GOBP_df1_trans$node,levels = c(GOBP_df1$pathway %>% unique()%>% rev(),
+                                                               GOBP_df1$gene %>% unique() %>% rev()))
+  ggplot(GOBP_df1_trans, aes(x = x,
+                             next_x= next_x,
+                             node= node,
+                             next_node= next_node,
+                             fill= node,
+                             label= node)) +
+    geom_sankey(flow.fill="#DFDFDF",
+                flow.color="grey60",
+                node.fill=dittoColors()[1:101],
+                width=0.15) + 
+    geom_sankey_text(size = 3,
+                     color= "black",
+                     hjust=1) + 
+    theme_void()
+  ##得到8.全部细胞DEGs的GO（BP）桑吉图-保存pdf
+}
+
+#滋养细胞DEGs的KEGG的桑吉图
+{
+  KEGG_df1 <- read.csv("./other_data/富集分析/4.trophoblast DEGs（可视化）/trophoblast DEGs的KEGG结果（桑吉图用）.csv", header = T)
+  KEGG_df1_trans <- KEGG_df1 %>%make_long(gene, pathway)
+  KEGG_df1_trans$node <- factor(KEGG_df1_trans$node,levels = c(KEGG_df1$pathway %>% unique()%>% rev(),
+                                                               KEGG_df1$gene %>% unique() %>% rev()))
+  ggplot(KEGG_df1_trans, aes(x = x,
+                             next_x= next_x,
+                             node= node,
+                             next_node= next_node,
+                             fill= node,
+                             label= node)) +
+    geom_sankey(flow.fill="#DFDFDF",
+                flow.color="grey60",
+                node.fill=dittoColors()[1:75],
+                width=0.15) + 
+    geom_sankey_text(size = 3,
+                     color= "black",
+                     hjust=1) + 
+    theme_void()
+  ##得到5.全部细胞DEGs的KEGG桑吉图-保存pdf
+}
+
+#滋养细胞DEGs的GO（MF）的桑吉图
+{
+  GOMF_df1 <- read.csv("./other_data/富集分析/4.trophoblast DEGs（可视化）/trophoblast DEGs的GO（MF）结果（桑吉图用）.csv", header = T)
+  GOMF_df1_trans <- GOMF_df1 %>%make_long(gene, pathway)
+  GOMF_df1_trans$node <- factor(GOMF_df1_trans$node,levels = c(GOMF_df1$pathway %>% unique()%>% rev(),
+                                                               GOMF_df1$gene %>% unique() %>% rev()))
+  ggplot(GOMF_df1_trans, aes(x = x,
+                             next_x= next_x,
+                             node= node,
+                             next_node= next_node,
+                             fill= node,
+                             label= node)) +
+    geom_sankey(flow.fill="#DFDFDF",
+                flow.color="grey60",
+                node.fill=dittoColors()[1:85],
+                width=0.15) + 
+    geom_sankey_text(size = 3,
+                     color= "black",
+                     hjust=1) + 
+    theme_void()
+  ##得到6.滋养细胞DEGs的GO（MF）桑吉图-保存pdf
+}
+
+#滋养细胞DEGs的GO（CC）的桑吉图
+{
+  GOCC_df1 <- read.csv("./other_data/富集分析/4.trophoblast DEGs（可视化）/trophoblast DEGs的GO（CC）结果（桑吉图用）.csv", header = T)
+  GOCC_df1_trans <- GOCC_df1 %>%make_long(gene, pathway)
+  GOCC_df1_trans$node <- factor(GOCC_df1_trans$node,levels = c(GOCC_df1$pathway %>% unique()%>% rev(),
+                                                               GOCC_df1$gene %>% unique() %>% rev()))
+  ggplot(GOCC_df1_trans, aes(x = x,
+                             next_x= next_x,
+                             node= node,
+                             next_node= next_node,
+                             fill= node,
+                             label= node)) +
+    geom_sankey(flow.fill="#DFDFDF",
+                flow.color="grey60",
+                node.fill=dittoColors()[1:80],
+                width=0.15) + 
+    geom_sankey_text(size = 3,
+                     color= "black",
+                     hjust=1) + 
+    theme_void()
+  ##得到7.滋养细胞DEGs的GO（CC）桑吉图-保存pdf
+}
+
+#滋养细胞DEGs的GO（BP）的桑吉图
+{
+  GOBP_df1 <- read.csv("./other_data/富集分析/4.trophoblast DEGs（可视化）/trophoblast DEGs的GO（BP）结果（桑吉图用）.csv", header = T)
+  GOBP_df1_trans <- GOBP_df1 %>%make_long(gene, pathway)
+  GOBP_df1_trans$node <- factor(GOBP_df1_trans$node,levels = c(GOBP_df1$pathway %>% unique()%>% rev(),
+                                                               GOBP_df1$gene %>% unique() %>% rev()))
+  ggplot(GOBP_df1_trans, aes(x = x,
+                             next_x= next_x,
+                             node= node,
+                             next_node= next_node,
+                             fill= node,
+                             label= node)) +
+    geom_sankey(flow.fill="#DFDFDF",
+                flow.color="grey60",
+                node.fill=dittoColors()[1:91],
+                width=0.15) + 
+    geom_sankey_text(size = 3,
+                     color= "black",
+                     hjust=1) + 
+    theme_void()
+  ##得到8.滋养细胞DEGs的GO（BP）桑吉图-保存pdf
+}
+
+#EVT细胞DEGs的KEGG的桑吉图
+{
+  KEGG_df1 <- read.csv("./other_data/富集分析/5.EVT DEGs（可视化）/EVT DEGs的KEGG结果（桑吉图用）.csv", header = T)
+  KEGG_df1_trans <- KEGG_df1 %>%make_long(gene, pathway)
+  KEGG_df1_trans$node <- factor(KEGG_df1_trans$node,levels = c(KEGG_df1$pathway %>% unique()%>% rev(),
+                                                               KEGG_df1$gene %>% unique() %>% rev()))
+  ggplot(KEGG_df1_trans, aes(x = x,
+                             next_x= next_x,
+                             node= node,
+                             next_node= next_node,
+                             fill= node,
+                             label= node)) +
+    geom_sankey(flow.fill="#DFDFDF",
+                flow.color="grey60",
+                node.fill=dittoColors()[1:73],
+                width=0.15) + 
+    geom_sankey_text(size = 3,
+                     color= "black",
+                     hjust=1) + 
+    theme_void()
+  ##得到5.EVT细胞DEGs的KEGG桑吉图-保存pdf
+}
+
+#EVT细胞DEGs的GO（MF）的桑吉图
+{
+  GOMF_df1 <- read.csv("./other_data/富集分析/5.EVT DEGs（可视化）/EVT DEGs的GO（MF）结果（桑吉图用）.csv", header = T)
+  GOMF_df1_trans <- GOMF_df1 %>%make_long(gene, pathway)
+  GOMF_df1_trans$node <- factor(GOMF_df1_trans$node,levels = c(GOMF_df1$pathway %>% unique()%>% rev(),
+                                                               GOMF_df1$gene %>% unique() %>% rev()))
+  ggplot(GOMF_df1_trans, aes(x = x,
+                             next_x= next_x,
+                             node= node,
+                             next_node= next_node,
+                             fill= node,
+                             label= node)) +
+    geom_sankey(flow.fill="#DFDFDF",
+                flow.color="grey60",
+                node.fill=dittoColors()[1:80],
+                width=0.15) + 
+    geom_sankey_text(size = 3,
+                     color= "black",
+                     hjust=1) + 
+    theme_void()
+  ##得到6.EVT细胞DEGs的GO（MF）桑吉图-保存pdf
+}
+
+#EVT细胞DEGs的GO（CC）的桑吉图
+{
+  GOCC_df1 <- read.csv("./other_data/富集分析/5.EVT DEGs（可视化）/EVT DEGs的GO（CC）结果（桑吉图用）.csv", header = T)
+  GOCC_df1_trans <- GOCC_df1 %>%make_long(gene, pathway)
+  GOCC_df1_trans$node <- factor(GOCC_df1_trans$node,levels = c(GOCC_df1$pathway %>% unique()%>% rev(),
+                                                               GOCC_df1$gene %>% unique() %>% rev()))
+  ggplot(GOCC_df1_trans, aes(x = x,
+                             next_x= next_x,
+                             node= node,
+                             next_node= next_node,
+                             fill= node,
+                             label= node)) +
+    geom_sankey(flow.fill="#DFDFDF",
+                flow.color="grey60",
+                node.fill=dittoColors()[1:82],
+                width=0.15) + 
+    geom_sankey_text(size = 3,
+                     color= "black",
+                     hjust=1) + 
+    theme_void()
+  ##得到7.EVT细胞DEGs的GO（CC）桑吉图-保存pdf
+}
+
+#EVT细胞DEGs的GO（BP）的桑吉图
+{
+  GOBP_df1 <- read.csv("./other_data/富集分析/5.EVT DEGs（可视化）/EVT DEGs的GO（BP）结果（桑吉图用）.csv", header = T)
+  GOBP_df1_trans <- GOBP_df1 %>%make_long(gene, pathway)
+  GOBP_df1_trans$node <- factor(GOBP_df1_trans$node,levels = c(GOBP_df1$pathway %>% unique()%>% rev(),
+                                                               GOBP_df1$gene %>% unique() %>% rev()))
+  ggplot(GOBP_df1_trans, aes(x = x,
+                             next_x= next_x,
+                             node= node,
+                             next_node= next_node,
+                             fill= node,
+                             label= node)) +
+    geom_sankey(flow.fill="#DFDFDF",
+                flow.color="grey60",
+                node.fill=dittoColors()[1:96],
+                width=0.15) + 
+    geom_sankey_text(size = 3,
+                     color= "black",
+                     hjust=1) + 
+    theme_void()
+  ##得到8.EVT细胞DEGs的GO（BP）桑吉图-保存pdf
+}
+
+#VCT细胞DEGs的KEGG的桑吉图
+{
+  KEGG_df1 <- read.csv("./other_data/富集分析/6.VCT DEGs（可视化）/VCT DEGs的KEGG结果（桑吉图用）.csv", header = T)
+  KEGG_df1_trans <- KEGG_df1 %>%make_long(gene, pathway)
+  KEGG_df1_trans$node <- factor(KEGG_df1_trans$node,levels = c(KEGG_df1$pathway %>% unique()%>% rev(),
+                                                               KEGG_df1$gene %>% unique() %>% rev()))
+  ggplot(KEGG_df1_trans, aes(x = x,
+                             next_x= next_x,
+                             node= node,
+                             next_node= next_node,
+                             fill= node,
+                             label= node)) +
+    geom_sankey(flow.fill="#DFDFDF",
+                flow.color="grey60",
+                node.fill=dittoColors()[1:78],
+                width=0.15) + 
+    geom_sankey_text(size = 3,
+                     color= "black",
+                     hjust=1) + 
+    theme_void()
+  ##得到5.VCT细胞DEGs的KEGG桑吉图-保存pdf
+}
+
+#VCT细胞DEGs的GO（MF）的桑吉图
+{
+  GOMF_df1 <- read.csv("./other_data/富集分析/6.VCT DEGs（可视化）/VCT DEGs的GO（MF）结果（桑吉图用）.csv", header = T)
+  GOMF_df1_trans <- GOMF_df1 %>%make_long(gene, pathway)
+  GOMF_df1_trans$node <- factor(GOMF_df1_trans$node,levels = c(GOMF_df1$pathway %>% unique()%>% rev(),
+                                                               GOMF_df1$gene %>% unique() %>% rev()))
+  ggplot(GOMF_df1_trans, aes(x = x,
+                             next_x= next_x,
+                             node= node,
+                             next_node= next_node,
+                             fill= node,
+                             label= node)) +
+    geom_sankey(flow.fill="#DFDFDF",
+                flow.color="grey60",
+                node.fill=dittoColors()[1:94],
+                width=0.15) + 
+    geom_sankey_text(size = 3,
+                     color= "black",
+                     hjust=1) + 
+    theme_void()
+  ##得到6.VCT细胞DEGs的GO（MF）桑吉图-保存pdf
+}
+
+#VCT细胞DEGs的GO（CC）的桑吉图
+{
+  GOCC_df1 <- read.csv("./other_data/富集分析/6.VCT DEGs（可视化）/VCT DEGs的GO（CC）结果（桑吉图用）.csv", header = T)
+  GOCC_df1_trans <- GOCC_df1 %>%make_long(gene, pathway)
+  GOCC_df1_trans$node <- factor(GOCC_df1_trans$node,levels = c(GOCC_df1$pathway %>% unique()%>% rev(),
+                                                               GOCC_df1$gene %>% unique() %>% rev()))
+  ggplot(GOCC_df1_trans, aes(x = x,
+                             next_x= next_x,
+                             node= node,
+                             next_node= next_node,
+                             fill= node,
+                             label= node)) +
+    geom_sankey(flow.fill="#DFDFDF",
+                flow.color="grey60",
+                node.fill=dittoColors()[1:64],
+                width=0.15) + 
+    geom_sankey_text(size = 3,
+                     color= "black",
+                     hjust=1) + 
+    theme_void()
+  ##得到7.VCT细胞DEGs的GO（CC）桑吉图-保存pdf
+}
+
+#VCT细胞DEGs的GO（BP）的桑吉图
+{
+  GOBP_df1 <- read.csv("./other_data/富集分析/6.VCT DEGs（可视化）/VCT DEGs的GO（BP）结果（桑吉图用）.csv", header = T)
+  GOBP_df1_trans <- GOBP_df1 %>%make_long(gene, pathway)
+  GOBP_df1_trans$node <- factor(GOBP_df1_trans$node,levels = c(GOBP_df1$pathway %>% unique()%>% rev(),
+                                                               GOBP_df1$gene %>% unique() %>% rev()))
+  ggplot(GOBP_df1_trans, aes(x = x,
+                             next_x= next_x,
+                             node= node,
+                             next_node= next_node,
+                             fill= node,
+                             label= node)) +
+    geom_sankey(flow.fill="#DFDFDF",
+                flow.color="grey60",
+                node.fill=dittoColors()[1:116],
+                width=0.15) + 
+    geom_sankey_text(size = 3,
+                     color= "black",
+                     hjust=1) + 
+    theme_void()
+  ##得到8.VCT细胞DEGs的GO（BP）桑吉图-保存pdf
+}
+
+#SCT细胞DEGs的KEGG的桑吉图
+{
+  KEGG_df1 <- read.csv("./other_data/富集分析/7.SCT DEGs（可视化）/SCT DEGs的KEGG结果（桑吉图用）.csv", header = T)
+  KEGG_df1_trans <- KEGG_df1 %>%make_long(gene, pathway)
+  KEGG_df1_trans$node <- factor(KEGG_df1_trans$node,levels = c(KEGG_df1$pathway %>% unique()%>% rev(),
+                                                               KEGG_df1$gene %>% unique() %>% rev()))
+  ggplot(KEGG_df1_trans, aes(x = x,
+                             next_x= next_x,
+                             node= node,
+                             next_node= next_node,
+                             fill= node,
+                             label= node)) +
+    geom_sankey(flow.fill="#DFDFDF",
+                flow.color="grey60",
+                node.fill=dittoColors()[1:81],
+                width=0.15) + 
+    geom_sankey_text(size = 3,
+                     color= "black",
+                     hjust=1) + 
+    theme_void()
+  ##得到5.SCT细胞DEGs的KEGG桑吉图-保存pdf
+}
+
+#SCT细胞DEGs的GO（MF）的桑吉图
+{
+  GOMF_df1 <- read.csv("./other_data/富集分析/7.SCT DEGs（可视化）/SCT DEGs的GO（MF）结果（桑吉图用）.csv", header = T)
+  GOMF_df1_trans <- GOMF_df1 %>%make_long(gene, pathway)
+  GOMF_df1_trans$node <- factor(GOMF_df1_trans$node,levels = c(GOMF_df1$pathway %>% unique()%>% rev(),
+                                                               GOMF_df1$gene %>% unique() %>% rev()))
+  ggplot(GOMF_df1_trans, aes(x = x,
+                             next_x= next_x,
+                             node= node,
+                             next_node= next_node,
+                             fill= node,
+                             label= node)) +
+    geom_sankey(flow.fill="#DFDFDF",
+                flow.color="grey60",
+                node.fill=dittoColors()[1:100],
+                width=0.15) + 
+    geom_sankey_text(size = 3,
+                     color= "black",
+                     hjust=1) + 
+    theme_void()
+  ##得到6.SCT细胞DEGs的GO（MF）桑吉图-保存pdf
+}
+
+#SCT细胞DEGs的GO（CC）的桑吉图
+{
+  GOCC_df1 <- read.csv("./other_data/富集分析/7.SCT DEGs（可视化）/SCT DEGs的GO（CC）结果（桑吉图用）.csv", header = T)
+  GOCC_df1_trans <- GOCC_df1 %>%make_long(gene, pathway)
+  GOCC_df1_trans$node <- factor(GOCC_df1_trans$node,levels = c(GOCC_df1$pathway %>% unique()%>% rev(),
+                                                               GOCC_df1$gene %>% unique() %>% rev()))
+  ggplot(GOCC_df1_trans, aes(x = x,
+                             next_x= next_x,
+                             node= node,
+                             next_node= next_node,
+                             fill= node,
+                             label= node)) +
+    geom_sankey(flow.fill="#DFDFDF",
+                flow.color="grey60",
+                node.fill=dittoColors()[1:74],
+                width=0.15) + 
+    geom_sankey_text(size = 3,
+                     color= "black",
+                     hjust=1) + 
+    theme_void()
+  ##得到7.SCT细胞DEGs的GO（CC）桑吉图-保存pdf
+}
+
+#SCT细胞DEGs的GO（BP）的桑吉图
+{
+  GOBP_df1 <- read.csv("./other_data/富集分析/7.SCT DEGs（可视化）/SCT DEGs的GO（BP）结果（桑吉图用）.csv", header = T)
+  GOBP_df1_trans <- GOBP_df1 %>%make_long(gene, pathway)
+  GOBP_df1_trans$node <- factor(GOBP_df1_trans$node,levels = c(GOBP_df1$pathway %>% unique()%>% rev(),
+                                                               GOBP_df1$gene %>% unique() %>% rev()))
+  ggplot(GOBP_df1_trans, aes(x = x,
+                             next_x= next_x,
+                             node= node,
+                             next_node= next_node,
+                             fill= node,
+                             label= node)) +
+    geom_sankey(flow.fill="#DFDFDF",
+                flow.color="grey60",
+                node.fill=dittoColors()[1:85],
+                width=0.15) + 
+    geom_sankey_text(size = 3,
+                     color= "black",
+                     hjust=1) + 
+    theme_void()
+  ##得到8.SCT细胞DEGs的GO（BP）桑吉图-保存pdf
+}
