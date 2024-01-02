@@ -69,6 +69,7 @@ ggplot(cellratio_group) +
 }
 
 #假设检验的准备工作
+{
 cellratio_con <- cellratio_sample[grep(pattern = "control",
                                        cellratio_sample[,2]),]
 cellratio_EOPE <- cellratio_sample[grep(pattern = "EOPE",
@@ -79,6 +80,7 @@ cellratio_LOPE <- cellratio_sample[grep(pattern = "LOPE",
 sce_groups <- c("EVT","SCT","Monocyte","VCT","T cell","Endothelial cell",
                 "Macrophage","Hofbauer cell","Stromal cell","RBC","B cell",
                 "Decidual cell","Dendritic cell","NK cell","Smooth muscle cell")
+}
 
 #对con vs EOPE细胞比例假设检验
 {
@@ -291,6 +293,7 @@ for(group_ in sce_groups){
           legend.position = 'none') + 
     labs(title = group_,y='Percentage') +
     geom_errorbar(aes(ymin = lower, ymax = upper),col = "grey60",width =  1)
+  pplist[[group_]] = pp2
 }
 plot_grid(pplist[["EVT"]],pplist[["SCT"]],pplist[["VCT"]],
           pplist[["Monocyte"]],pplist[["T cell"]],pplist[["Endothelial cell"]],
@@ -302,7 +305,7 @@ plot_grid(pplist[["EVT"]],pplist[["SCT"]],pplist[["VCT"]],
 }
 
 #对EOPE vs LOPE细胞比例假设检验
-
+{
 #创建假设检验使用的数据框
 cellratio_3 <- rbind(cellratio_EOPE, cellratio_LOPE)
 cellper3 <- dcast(cellratio_3,Var2~Var1, value.var = "Freq")
@@ -396,6 +399,7 @@ for(group_ in sce_groups){
           legend.position = 'none') + 
     labs(title = group_,y='Percentage') +
     geom_errorbar(aes(ymin = lower, ymax = upper),col = "grey60",width =  1)
+  pplist[[group_]] = pp3
 }
 plot_grid(pplist[["EVT"]],pplist[["SCT"]],pplist[["VCT"]],
           pplist[["Monocyte"]],pplist[["T cell"]],pplist[["Endothelial cell"]],
@@ -403,3 +407,4 @@ plot_grid(pplist[["EVT"]],pplist[["SCT"]],pplist[["VCT"]],
           pplist[["RBC"]],pplist[["B cell"]],pplist[["Decidual cell"]],
           pplist[["Dendritic cell"]],pplist[["NK cell"]],pplist[["Smooth muscle cell"]])
   ##获得8.EOPE vs LOPE细胞比例假设检验结果（不带p值）
+}
