@@ -1,0 +1,160 @@
+rm(list = ls())
+setwd("E:/2023.10/PE scRNA（多数据库运行）")
+getwd()
+
+#打开必要的package
+{
+if(!require(monocle3))devtools::install_github('cole-trapnell-lab/monocle3')
+if(!require(Seurat))install.packages("Seurat")
+if(!require(ggplot2))install.packages("ggplot2")
+if(!require(dplyr))install.packages("dplyr")
+if(!require(viridis))install.packages("viridis")
+if(!require(Hmisc))install.packages("Hmisc")
+if(!require(ggpubr))install.packages("ggpubr")
+if(!require(scales))install.packages("scales")
+if(!require(future.apply))install.packages("future.apply")
+if(!require(viridis))install.packages("viridis")
+if(!require(ComplexHeatmap))BiocManager::install("ComplexHeatmap")
+if(!require(magick))install.packages("magick")
+}
+
+#载入Seurat对象
+{
+object <- readRDS("./Seurat_data（整理）/合并（注释+TSNE）.rds")
+object <- subset(object,
+                 celltype == "EVT"|celltype == "SCT"|celltype == "VCT")
+  ##筛选出滋养细胞（未分亚群）
+table(object$celltype)
+object@meta.data$celltype = droplevels(object@meta.data$celltype, 
+                                       exclude = setdiff(levels(object@meta.data$celltype),
+                                                         unique(object@meta.data$celltype)))
+  ##删除滋养细胞对象中的其他为0的细胞
+table(object$celltype)
+DimPlot(object, reduction = "umap",
+        label = TRUE,
+        pt.size = 0,
+        cols = c("#FF7F00", "#33A02C", "#ffff00"),
+        raster=FALSE)
+object <- subset(object,
+                 umap_2 < -2.8 & umap_1 < 6)
+}
+
+#提取Seurat对象中的表达矩阵、基因、数据
+{
+exp <- GetAssayData(object, layer = "counts")
+expression_matrix <- as(exp, "sparseMatrix") 
+rm(exp)
+  ##expression_matrix是表达矩阵
+cell_metadata <- object@meta.data
+  ##cell_metadata是分组数据
+gene_annotation <- data.frame(gene_short_name = rownames(expression_matrix))
+rownames(gene_annotation) <- rownames(expression_matrix)
+  ##gene_annotation是基因数据
+}
+
+#构建cds对象
+cds <- new_cell_data_set(expression_matrix,
+                         cell_metadata = cell_metadata,
+                         gene_metadata = gene_annotation)
+
+#cds对象的降维、聚类
+#每个细胞都可以看作是高维空间中的一个点，每个维度都描述了不同基因的表达
+#识别基因表达变化的程序就相当于了解细胞在这个空间中所遵循的轨迹。
+#分析中包含的维度越多，学习轨迹就越困难
+#因此，需要通过各种不同的算法来降低数据的维数
+#如果后续分析结果仍然得不到理想的轨迹，可以退回来进一步降维
+cds <- preprocess_cds(cds, num_dim = 100)
+  ##num_dim越小，维数越少
+  ##需要得到轨迹推断树之后，才能明确num_dim是否合适
+plot_pc_variance_explained(cds)
+  ##展示PC数
+cds <- reduce_dimension(cds,
+                        reduction_method = "UMAP",
+                        preprocess_method = 'PCA')
+cds <- reduce_dimension(cds,
+                        reduction_method = "tSNE",
+                        preprocess_method = 'PCA')
+plot_cells(cds, color_cells_by="celltype",cell_size=0.5,group_label_size=5)
+  ##查看Seurat定义的细胞类型
+
+#monocle的细胞分簇
+cds <- cluster_cells(cds,
+                     k = 50)
+plot_cells(cds,cell_size=0.5,group_label_size=5)
+  ##查看monocle定义的细胞类型
+  ##monocle定义的细胞类型不符合研究的目的
+
+#得到使用的monocle对象
+mycds <- cds
+
+#拟时序的建立
+mycds <- learn_graph(mycds,
+                     verbose=T,
+                     learn_graph_control=list(minimal_branch_len=10,
+                                              euclidean_distance_ratio=1))
+  ##minimal_branch_len在图修剪过程中要保留的分支直径路径的最小长度
+  ##minimal_branch_len默认值是10
+  ##euclidean_distance_ratio生成树中两个末端节点的欧氏距离与生成树上允许连接的任何连接点之间的最大距离之比
+  ##euclidean_distance_ratio默认值为1
+
+#得到推断轨迹树
+plot_cells(mycds, 
+           color_cells_by = 'celltype',
+           label_groups_by_cluster=FALSE,
+           label_leaves=FALSE,
+           label_branch_points=FALSE,
+           cell_size=0.5,group_label_size=4)
+  ##得到1.滋养细胞的推断轨迹树
+
+plot_cells(mycds, 
+           color_cells_by = "celltype", 
+           label_groups_by_cluster=FALSE,
+           label_leaves=FALSE, 
+           label_branch_points=TRUE,
+           graph_label_size=4)
+  ##得到2.滋养细胞的推断轨迹树（分支）
+
+plot_cells(mycds, 
+           color_cells_by = "celltype", 
+           label_groups_by_cluster=FALSE,
+           label_leaves=TRUE, 
+           label_branch_points=FALSE,
+           graph_label_size=4)
+  ##得到3.滋养细胞的推断轨迹树（终点）
+
+#函数推断分化起点
+mycds2 <- mycds
+get_earliest_principal_node <- function(cds){
+  cell_ids <- dim(cds)[2]
+  closest_vertex <- cds@principal_graph_aux[["UMAP"]]$pr_graph_cell_proj_closest_vertex
+  closest_vertex <- as.matrix(closest_vertex[colnames(cds), ])
+  root_pr_nodes <- igraph::V(principal_graph(cds)[["UMAP"]])$name[as.numeric(names(which.max(table(closest_vertex[cell_ids,]))))]
+  root_pr_nodes
+}
+  ##设定一个自动得到起点的函数
+mycds2 <- order_cells(mycds2,
+                      root_pr_nodes = get_earliest_principal_node(mycds2))
+plot_cells(mycds2, label_cell_groups = T, 
+           color_cells_by = "pseudotime", 
+           label_leaves = F, 
+           label_branch_points = T, 
+           graph_label_size = 4, 
+           cell_size=0.5, 
+           trajectory_graph_segment_size = 2)
+
+#手动选择起点，可以选择多个
+mycds1 <- mycds
+mycds1 <- order_cells(mycds1)#在交互界面中选择
+#可视化拟时图
+plot_cells(mycds1, label_cell_groups = F, 
+           color_cells_by = "pseudotime", 
+           label_leaves=FALSE, 
+           label_branch_points=FALSE,
+           graph_label_size = 0, 
+           cell_size=0.5, 
+           trajectory_graph_segment_size = 0,
+           label_groups_by_cluster=T,
+           )
+  ##得到4.滋养细胞的分化轨迹
+rm(mycds2)
+save.image("分化.RData")
